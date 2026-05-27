@@ -1,0 +1,34 @@
+# PHP / Composer
+/vendor/
+**/vendor/
+composer.lock.bak
+.phpunit.result.cache
+.phpunit.cache/
+.php-cs-fixer.cache
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker / runtime
+docker/.env
+docker/data/
+**/var/cache/
+**/var/log/
+
+# Workshop output
+*.local.md
+slides/*.pdf
+slides/*.pptx
+slides/*.key
+!slides/.gitkeep
+
+# Env
+.env
+.env.local
