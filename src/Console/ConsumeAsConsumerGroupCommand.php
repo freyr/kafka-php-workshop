@@ -19,8 +19,9 @@ use Workshop\Kernel\Topics;
 )]
 final class ConsumeAsConsumerGroupCommand extends Command
 {
-    public function __construct(private readonly KafkaContextFactory $kafka)
-    {
+    public function __construct(
+        private readonly KafkaContextFactory $kafka,
+    ) {
         parent::__construct();
     }
 
@@ -34,11 +35,11 @@ final class ConsumeAsConsumerGroupCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $group     = (string) $input->getArgument('group');
-        $max       = (int) $input->getOption('max');
+        $group = (string) $input->getArgument('group');
+        $max = (int) $input->getOption('max');
         $timeoutMs = (int) $input->getOption('timeout');
 
-        $context  = $this->kafka->forConsumer($group);
+        $context = $this->kafka->forConsumer($group);
         $consumer = $context->createConsumer($context->createTopic(Topics::ConsumerGroups->value));
         $consumer->setCommitAsync(false);
 
@@ -48,7 +49,7 @@ final class ConsumeAsConsumerGroupCommand extends Command
         while ($received < $max) {
             $remainingMs = (int) max(1, ($deadline - microtime(true)) * 1000);
             $message = $consumer->receive($remainingMs);
-            if ($message === null) {
+            if (null === $message) {
                 break;
             }
 
@@ -61,7 +62,7 @@ final class ConsumeAsConsumerGroupCommand extends Command
             ));
 
             $consumer->acknowledge($message);
-            $received++;
+            ++$received;
         }
 
         $context->close();

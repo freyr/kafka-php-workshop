@@ -18,8 +18,9 @@ use Workshop\Kernel\Topics;
 )]
 final class ProducePaymentEventsCommand extends Command
 {
-    public function __construct(private readonly KafkaContextFactory $kafka)
-    {
+    public function __construct(
+        private readonly KafkaContextFactory $kafka,
+    ) {
         parent::__construct();
     }
 
@@ -32,11 +33,11 @@ final class ProducePaymentEventsCommand extends Command
     {
         $count = (int) $input->getOption('count');
 
-        $context  = $this->kafka->forProducer();
-        $topic    = $context->createTopic(Topics::Offsets->value);
+        $context = $this->kafka->forProducer();
+        $topic = $context->createTopic(Topics::Offsets->value);
         $producer = $context->createProducer();
 
-        for ($i = 1; $i <= $count; $i++) {
+        for ($i = 1; $i <= $count; ++$i) {
             $payload = "payment-completed-{$i}";
             $producer->send($topic, $context->createMessage($payload));
             $output->writeln("produced: {$payload}");

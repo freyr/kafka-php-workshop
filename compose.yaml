@@ -64,20 +64,13 @@ services:
       DYNAMIC_CONFIG_ENABLED: "true"
 
   php:
+    profiles:
+      - cli
     build:
       context: .
-    depends_on:
-      kafka:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
     working_dir: /app
     volumes:
       - ./:/app
-    # Configuration lives in .env (loaded by bin/console via symfony/dotenv).
-    tty: true
-    stdin_open: true
-    command: ["sleep", "infinity"]
 
 volumes:
   kafka-data:

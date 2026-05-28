@@ -7,6 +7,6 @@ namespace Workshop\Kernel;
 enum Topics: string
 {
     case ConsumerGroups = 'consumer-groups-events';
-    case Offsets        = 'offsets-events';
-    case Partitioning   = 'partitioning-events';
+    case Offsets = 'offsets-events';
+    case Partitioning = 'partitioning-events';
 }

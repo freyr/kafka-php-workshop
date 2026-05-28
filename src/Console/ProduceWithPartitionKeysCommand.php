@@ -18,10 +18,11 @@ use Workshop\Kernel\Topics;
 )]
 final class ProduceWithPartitionKeysCommand extends Command
 {
-    private const DEFAULT_KEYS = ['alice', 'bob', 'carol', 'dave'];
+    private const array DEFAULT_KEYS = ['alice', 'bob', 'carol', 'dave'];
 
-    public function __construct(private readonly KafkaContextFactory $kafka)
-    {
+    public function __construct(
+        private readonly KafkaContextFactory $kafka,
+    ) {
         parent::__construct();
     }
 
@@ -37,22 +38,23 @@ final class ProduceWithPartitionKeysCommand extends Command
     {
         $count = (int) $input->getOption('count');
         $keyed = (bool) $input->getOption('keyed');
-        $keys  = $keyed
+        $keys = $keyed
             ? array_values(array_filter(array_map('trim', explode(',', (string) $input->getOption('keys')))))
             : [];
 
-        if ($keyed && $keys === []) {
+        if ($keyed && [] === $keys) {
             $output->writeln('<error>--keyed requires --keys with at least one entry.</error>');
+
             return Command::INVALID;
         }
 
-        $context  = $this->kafka->forProducer();
-        $topic    = $context->createTopic(Topics::Partitioning->value);
+        $context = $this->kafka->forProducer();
+        $topic = $context->createTopic(Topics::Partitioning->value);
         $producer = $context->createProducer();
 
-        for ($i = 1; $i <= $count; $i++) {
+        for ($i = 1; $i <= $count; ++$i) {
             if ($keyed) {
-                $key     = $keys[($i - 1) % count($keys)];
+                $key = $keys[($i - 1) % count($keys)];
                 $payload = "event-{$i}";
                 $message = $context->createMessage($payload);
                 $message->setKey($key);

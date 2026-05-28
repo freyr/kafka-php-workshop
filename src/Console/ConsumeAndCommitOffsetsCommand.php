@@ -18,10 +18,11 @@ use Workshop\Kernel\Topics;
 )]
 final class ConsumeAndCommitOffsetsCommand extends Command
 {
-    private const GROUP = 'offsets-group';
+    private const string GROUP = 'offsets-group';
 
-    public function __construct(private readonly KafkaContextFactory $kafka)
-    {
+    public function __construct(
+        private readonly KafkaContextFactory $kafka,
+    ) {
         parent::__construct();
     }
 
@@ -34,13 +35,13 @@ final class ConsumeAndCommitOffsetsCommand extends Command
     {
         $timeoutMs = (int) $input->getOption('timeout');
 
-        $context  = $this->kafka->forConsumer(self::GROUP);
+        $context = $this->kafka->forConsumer(self::GROUP);
         $consumer = $context->createConsumer($context->createTopic(Topics::Offsets->value));
         $consumer->setCommitAsync(false);
 
         while (true) {
             $message = $consumer->receive($timeoutMs);
-            if ($message === null) {
+            if (null === $message) {
                 break;
             }
 

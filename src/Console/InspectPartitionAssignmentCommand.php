@@ -18,8 +18,9 @@ use Workshop\Kernel\Topics;
 )]
 final class InspectPartitionAssignmentCommand extends Command
 {
-    public function __construct(private readonly KafkaContextFactory $kafka)
-    {
+    public function __construct(
+        private readonly KafkaContextFactory $kafka,
+    ) {
         parent::__construct();
     }
 
@@ -34,13 +35,13 @@ final class InspectPartitionAssignmentCommand extends Command
         // Throwaway group: each run gets a unique id so we always start from the earliest offset.
         $group = sprintf('partitioning-inspect-%d-%d', getmypid(), time());
 
-        $context  = $this->kafka->forConsumer($group);
+        $context = $this->kafka->forConsumer($group);
         $consumer = $context->createConsumer($context->createTopic(Topics::Partitioning->value));
         $consumer->setCommitAsync(false);
 
         while (true) {
             $message = $consumer->receive($timeoutMs);
-            if ($message === null) {
+            if (null === $message) {
                 break;
             }
 

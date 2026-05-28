@@ -9,8 +9,8 @@ use Workshop\Kernel\KafkaContextFactory;
 return function (ContainerConfigurator $c): void {
     $services = $c->services()
         ->defaults()
-            ->autowire()
-            ->autoconfigure();
+        ->autowire()
+        ->autoconfigure();
 
     // Any Symfony Command discovered below is tagged so bin/console picks it up,
     // and made public so we can fetch it from the compiled container by id.

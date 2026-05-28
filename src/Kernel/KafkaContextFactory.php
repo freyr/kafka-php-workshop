@@ -16,11 +16,11 @@ use Enqueue\RdKafka\RdKafkaContext;
  * teaching (group.id, auto.offset.reset overrides, commit mode) stays in the
  * command class itself.
  */
-final class KafkaContextFactory
+final readonly class KafkaContextFactory
 {
     public function __construct(
-        private readonly string $brokers,
-        private readonly RawStringSerializer $serializer,
+        private string $brokers,
+        private RawStringSerializer $serializer,
     ) {
     }
 
@@ -38,9 +38,9 @@ final class KafkaContextFactory
     public function forConsumer(string $groupId, array $overrides = []): RdKafkaContext
     {
         return $this->build([
-            'group.id'           => $groupId,
+            'group.id' => $groupId,
             'enable.auto.commit' => 'false',
-            'auto.offset.reset'  => 'earliest',
+            'auto.offset.reset' => 'earliest',
         ], $overrides);
     }
 
@@ -50,16 +50,45 @@ final class KafkaContextFactory
      */
     private function build(array $defaults, array $overrides): RdKafkaContext
     {
+        $this->assertBrokerReachable();
+
         $global = array_merge(
-            ['metadata.broker.list' => $this->brokers],
+            [
+                'metadata.broker.list' => $this->brokers,
+            ],
             $defaults,
             $overrides,
         );
 
-        $factory = new RdKafkaConnectionFactory(['global' => $global]);
+        $factory = new RdKafkaConnectionFactory([
+            'global' => $global,
+        ]);
         $context = $factory->createContext();
         $context->setSerializer($this->serializer);
 
         return $context;
+    }
+
+    /**
+     * Quick TCP probe of the first broker so we can surface a friendly hint
+     * instead of letting librdkafka time out silently in the background.
+     */
+    private function assertBrokerReachable(): void
+    {
+        $first = explode(',', $this->brokers)[0];
+        if (! str_contains($first, ':')) {
+            return; // unusual format — let librdkafka handle it
+        }
+
+        [$host, $port] = explode(':', $first, 2);
+        $errno = 0;
+        $errstr = '';
+        $sock = @fsockopen($host, (int) $port, $errno, $errstr, 2.0);
+
+        if (false === $sock) {
+            throw new BrokerUnreachableException($this->brokers, $errstr);
+        }
+
+        fclose($sock);
     }
 }

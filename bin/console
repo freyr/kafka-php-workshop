@@ -15,7 +15,7 @@ use Symfony\Component\Dotenv\Dotenv;
 
 $container = new ContainerBuilder();
 
-$container->setParameter('kafka.brokers',       $_ENV['KAFKA_BROKERS']       ?? 'kafka:29092');
+$container->setParameter('kafka.brokers', $_ENV['KAFKA_BROKERS'] ?? 'kafka:29092');
 $container->setParameter('schema_registry.url', $_ENV['SCHEMA_REGISTRY_URL'] ?? 'http://schema-registry:8081');
 
 (new PhpFileLoader($container, new FileLocator(__DIR__ . '/../config')))
