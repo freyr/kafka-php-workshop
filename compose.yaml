@@ -72,7 +72,7 @@ services:
 
   php:
     build:
-      context: ./php
+      context: ./docker/php
     container_name: kpw-php
     depends_on:
       kafka:
@@ -81,7 +81,7 @@ services:
         condition: service_healthy
     working_dir: /workshop
     volumes:
-      - ../:/workshop
+      - ./:/workshop
     environment:
       KAFKA_BROKERS: "kafka:29092"
       SCHEMA_REGISTRY_URL: "http://schema-registry:8081"

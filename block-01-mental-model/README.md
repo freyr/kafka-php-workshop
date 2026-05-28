@@ -16,12 +16,18 @@ mismatch and its consequences.
 
 ## Demos (`examples/`)
 
-_To be filled in._ Candidate demos:
+CLI-driven, all shelling out to the `kpw-kafka` container. See
+`examples/README.md` for the entry point.
 
-1. Tail a topic with `kafka-console-consumer` from two consumer-group IDs and
-   watch the offset advance independently.
-2. Reset a consumer group to an earlier offset and replay.
-3. Produce with and without keys; observe partition distribution.
+1. **`01-two-consumer-groups/`** — two consumer groups read the same topic
+   and maintain independent offsets. Makes "consuming is not destructive"
+   concrete.
+2. **`02-offset-reset-replay/`** — commit offsets, rewind them with
+   `kafka-consumer-groups --reset-offsets`, replay. Separates "log" from
+   "group bookmark."
+3. **`03-keyed-vs-unkeyed/`** — produce with null and explicit keys to a
+   4-partition topic, then inspect end-offset distribution and key →
+   partition mapping. Grounds the per-entity-order contract.
 
 ## Exercises (`exercises/`)
 

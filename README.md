@@ -34,9 +34,11 @@ block) and `exercises/` (student tasks with starter code), plus its own
 ## Running the stack
 
 ```sh
-cd docker
 docker compose up -d
 ```
+
+`compose.yaml` lives at the repo root; image build contexts (currently only
+the PHP CLI) live under `docker/`.
 
 Services exposed on the host:
 
