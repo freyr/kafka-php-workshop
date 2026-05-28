@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  cat >&2 <<EOF
+usage: bin/topic-create <topic> [--partitions N] [--replication-factor N]
+  defaults: --partitions 1 --replication-factor 1
+EOF
+  exit 2
+fi
+
+TOPIC="$1"; shift
+PARTITIONS=1
+RF=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --partitions)          PARTITIONS="$2"; shift 2 ;;
+    --replication-factor)  RF="$2";         shift 2 ;;
+    *) echo "unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+docker compose exec -T kafka kafka-topics \
+  --bootstrap-server kafka:29092 \
+  --create --topic "$TOPIC" \
+  --partitions "$PARTITIONS" --replication-factor "$RF"

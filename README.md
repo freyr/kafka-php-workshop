@@ -1,63 +1,101 @@
 # PHP + Kafka Workshop
 
-Working repo for a 2-day Kafka-for-PHP-teams workshop. Holds code examples,
-hands-on exercises, AVRO schemas, slide assets, and a Docker stack with Kafka,
-Confluent Schema Registry, Kafka UI, and a PHP 8.3 + `php-rdkafka` container.
+Working repo for a 2-day Kafka-for-PHP-teams workshop. Holds runnable demo
+commands, AVRO schemas, slide assets, and a Docker stack with Kafka,
+Confluent Schema Registry, Kafka UI, and a PHP 8.4 container with
+`php-rdkafka` (extension) + [`enqueue/rdkafka`](https://github.com/php-enqueue/rdkafka)
+(queue-interop wrapper used by all PHP commands), wired through
+`symfony/console` + `symfony/dependency-injection` (with PSR-4
+autodiscovery via `symfony/config`) and configured through `symfony/dotenv`.
 
-Source material (research, agenda, per-block notes) lives in the Consulting
-vault under `PHP-Kafka-Research/`. This repo is the runnable counterpart.
+Per-block facilitator notes live locally in `blocks/` (gitignored — pulled
+from the Consulting vault `PHP-Kafka-Research/`). This repo is the runnable
+counterpart to that material.
 
 ## Layout
 
 ```
 .
-├── docker/                          # Compose stack: Kafka + SR + UI + PHP
-│   ├── compose.yaml
-│   └── php/                         # PHP 8.3 + librdkafka + php-rdkafka image
-├── schemas/                         # Shared AVRO schemas (subjects)
-├── slides/                          # Exported deck assets
-├── block-01-mental-model/           # Day 1 — Kafka mental model for PHP teams
-├── block-02-topic-architecture/     # Day 1 — Topic design and partitioning
-├── block-03-event-structure/        # Day 1 — Event design, envelopes, AVRO
-├── block-04-schema-registry/        # Day 1 — Schema Registry + compatibility
-├── block-05-delivery-guarantees/    # Day 2 — Acks, offsets, idempotency
-├── block-06-outbox/                 # Day 2 — Outbox + Debezium, choreography
-├── block-07-retry-dlt/              # Day 2 — Retry topics, DLT, error handling
-├── block-08-php-config/             # Day 2 — Producer/consumer config, ops
-└── block-09-blueprint/              # Day 2 — Target architecture session
+├── compose.yaml             # Compose stack: Kafka + SR + UI + PHP
+├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka image
+├── .env                     # Workshop defaults (loaded by bin/console)
+├── bin/
+│   ├── console              # Symfony Console entry — all PHP commands
+│   ├── topic-create / topic-delete / topic-describe
+│   ├── group-describe / group-reset / group-delete
+│   └── partition-offsets
+├── config/
+│   └── services.php         # DI definitions; PSR-4 autodiscovery of services
+├── src/
+│   ├── Kernel/              # KafkaContextFactory, RawStringSerializer, Topics enum
+│   └── Console/             # One class per command, self-describing names
+├── schemas/                 # Shared AVRO schemas (subjects)
+├── slides/                  # Exported deck assets
+├── tests/                   # PHPUnit suite
+└── blocks/                  # Per-block facilitator notes (gitignored)
 ```
-
-Each `block-XX-*/` folder contains `examples/` (runnable demos shown during the
-block) and `exercises/` (student tasks with starter code), plus its own
-`README.md` linking back to the vault research document.
 
 ## Running the stack
 
 ```sh
-docker compose up -d
+make bootstrap     # first-time: brings the stack up and runs composer install
 ```
-
-`compose.yaml` lives at the repo root; image build contexts (currently only
-the PHP CLI) live under `docker/`.
 
 Services exposed on the host:
 
-| Service          | URL / port               | Notes                                  |
-|------------------|--------------------------|----------------------------------------|
-| Kafka broker     | `localhost:9092`         | KRaft mode, single broker              |
-| Schema Registry  | `http://localhost:8081`  | Confluent SR, `AVRO` schemas           |
-| Kafka UI         | `http://localhost:8080`  | Kafbat fork of the old provectus UI    |
-| PHP CLI          | `docker compose run php` | PHP 8.3 with `librdkafka` + `rdkafka`  |
+| Service          | URL / port                  | Notes                                  |
+|------------------|-----------------------------|----------------------------------------|
+| Kafka broker     | `localhost:9092`            | KRaft mode, single broker              |
+| Schema Registry  | `http://localhost:8081`     | Confluent SR, `AVRO` schemas           |
+| Kafka UI         | `http://localhost:8080`     | Kafbat fork of the old provectus UI    |
+| PHP console      | `bin/console list`          | Run via `docker compose run --rm php`  |
 
-Topic, schema, and consumer-group state is persisted in the named volume
-`kafka-data`; remove it (`docker compose down -v`) to reset the stack.
+Topic, schema, and consumer-group state lives in the named volume
+`kafka-data`; remove it (`docker compose down -v` or `make nuke`) to reset.
+
+### Running commands
+
+```sh
+docker compose run --rm php bin/console list                       # show all commands
+docker compose run --rm php bin/console consumer-groups:produce    # produce 5 events
+make c CMD="consumer-groups:consume group-a"                       # shortcut
+```
+
+Admin operations against the broker are short bash scripts in `bin/`:
+
+```sh
+bin/topic-create consumer-groups-events --partitions 1
+bin/group-reset offsets-group earliest offsets-events
+bin/partition-offsets partitioning-events
+```
 
 ## Conventions
 
-- One topic per event type; subject naming follows `TopicNameStrategy` unless
-  noted in the block exercise.
-- Producer/consumer configs default to the values agreed in
-  `block-08-php-config/` — examples in earlier blocks may simplify them for
-  clarity but should call out any deviation.
-- Polish-language comments are acceptable in `exercises/` (workshop is
-  delivered in Polish); code identifiers and `examples/` stay in English.
+- **PSR-4 autodiscovery for services and commands.** `config/services.php`
+  declares `autowire` + `autoconfigure` defaults and loads
+  `Workshop\Kernel\` and `Workshop\Console\` from their respective
+  directories. Any class extending `Symfony\Component\Console\Command\Command`
+  is auto-tagged `console.command` and registered with the Symfony
+  Application. Adding a command means creating one class — no edits to
+  `bin/console` or `services.php`.
+- **PHP commands use `enqueue/rdkafka` via the `KafkaContextFactory`
+  service.** Constructor-inject the factory and call `forProducer()` or
+  `forConsumer(string $groupId)`. Direct use of raw `RdKafka\*` classes is
+  reserved for the block-08 config deep-dive.
+- **Self-describing class names, flat namespace.** Command classes live
+  under `Workshop\Console\` with names like `ProduceOrderEventsCommand`,
+  `ConsumeAsConsumerGroupCommand`, `InspectPartitionAssignmentCommand`.
+  No per-block or per-demo subfolders.
+- **Topic names are constants in `Workshop\Kernel\Topics`.** Cases:
+  `ConsumerGroups`, `Offsets`, `Partitioning` → `consumer-groups-events`,
+  `offsets-events`, `partitioning-events`.
+- **Config lives in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`),
+  loaded by `symfony/dotenv`. Per-user overrides go to `.env.local`
+  (gitignored).
+- **Admin shell scripts in `bin/`** wrap `docker compose exec kafka` calls
+  to the Kafka CLI — `enqueue/rdkafka` has no admin API, so these stay
+  shell.
+- One topic per event type; subject naming follows `TopicNameStrategy`
+  unless noted in the block exercise.
+- Polish-language comments are acceptable in workshop exercises (delivered
+  in Polish); code identifiers and shipped demos stay in English.

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 3 ]]; then
+  cat >&2 <<EOF
+usage: bin/group-reset <group-id> <earliest|latest|N> <topic>
+  N is a numeric offset (applied to every partition of the topic)
+EOF
+  exit 2
+fi
+
+GROUP="$1"
+POSITION="$2"
+TOPIC="$3"
+
+case "$POSITION" in
+  earliest) FLAG=(--to-earliest) ;;
+  latest)   FLAG=(--to-latest) ;;
+  *)
+    if [[ "$POSITION" =~ ^[0-9]+$ ]]; then
+      FLAG=(--to-offset "$POSITION")
+    else
+      echo "invalid position: $POSITION (use earliest, latest, or a number)" >&2
+      exit 2
+    fi
+    ;;
+esac
+
+docker compose exec -T kafka kafka-consumer-groups \
+  --bootstrap-server kafka:29092 \
+  --group "$GROUP" \
+  --reset-offsets \
+  "${FLAG[@]}" \
+  --topic "$TOPIC" \
+  --execute

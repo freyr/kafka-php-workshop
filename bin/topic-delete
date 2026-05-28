@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: bin/topic-delete <topic>" >&2
+  exit 2
+fi
+
+docker compose exec -T kafka kafka-topics \
+  --bootstrap-server kafka:29092 \
+  --delete --topic "$1" --if-exists

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: bin/group-delete <group-id>" >&2
+  exit 2
+fi
+
+docker compose exec -T kafka kafka-consumer-groups \
+  --bootstrap-server kafka:29092 \
+  --delete --group "$1" >/dev/null 2>&1 || true

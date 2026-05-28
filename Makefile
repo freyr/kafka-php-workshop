@@ -4,7 +4,7 @@ MAKEFLAGS += --no-print-directory
 .DEFAULT_GOAL := help
 
 DC         := docker compose
-KAFKA_EXEC := docker exec kpw-kafka
+KAFKA_EXEC := $(DC) exec kafka
 PHP_EXEC   := $(DC) exec php
 PHP_RUN    := $(DC) run --rm php
 BROKER     := kafka:29092
@@ -63,6 +63,15 @@ bootstrap: ## up + composer install (run once after cloning)
 php: ## interactive bash shell inside the running php container
 	$(PHP_EXEC) bash
 
+.PHONY: c
+c: ## run a workshop console command — usage: make c CMD="consumer-groups:produce"
+	@test -n "$(CMD)" || { echo "CMD is required, e.g. make c CMD=\"consumer-groups:produce\"" >&2; exit 2; }
+	$(PHP_RUN) bin/console $(CMD)
+
+.PHONY: console
+console: ## list workshop console commands
+	$(PHP_RUN) bin/console list
+
 .PHONY: composer-install
 composer-install: ## install composer dependencies inside the container
 	$(PHP_RUN) composer install
@@ -86,13 +95,13 @@ groups: ## list all consumer groups
 	$(KAFKA_EXEC) kafka-consumer-groups --bootstrap-server $(BROKER) --list
 
 .PHONY: describe-topic
-describe-topic: ## describe a topic — usage: make describe-topic TOPIC=demo01-events
-	@test -n "$(TOPIC)" || { echo "TOPIC is required, e.g. make describe-topic TOPIC=demo01-events" >&2; exit 2; }
+describe-topic: ## describe a topic — usage: make describe-topic TOPIC=consumer-groups-events
+	@test -n "$(TOPIC)" || { echo "TOPIC is required, e.g. make describe-topic TOPIC=consumer-groups-events" >&2; exit 2; }
 	$(KAFKA_EXEC) kafka-topics --bootstrap-server $(BROKER) --describe --topic $(TOPIC)
 
 .PHONY: describe-group
-describe-group: ## describe a consumer group — usage: make describe-group GROUP=demo02-group
-	@test -n "$(GROUP)" || { echo "GROUP is required, e.g. make describe-group GROUP=demo02-group" >&2; exit 2; }
+describe-group: ## describe a consumer group — usage: make describe-group GROUP=offsets-group
+	@test -n "$(GROUP)" || { echo "GROUP is required, e.g. make describe-group GROUP=offsets-group" >&2; exit 2; }
 	$(KAFKA_EXEC) kafka-consumer-groups --bootstrap-server $(BROKER) --describe --group $(GROUP)
 
 ##@ URLs (quick reference)

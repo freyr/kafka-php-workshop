@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: bin/partition-offsets <topic>" >&2
+  exit 2
+fi
+
+echo "end offsets per partition (topic:partition:offset):"
+docker compose exec kafka kafka-get-offsets \
+  --bootstrap-server kafka:29092 \
+  --topic "$1" \
+  --time -1 \
+  | sort -t: -k2 -n

@@ -1,15 +1,11 @@
-name: kafka-php-workshop
-
 services:
   kafka:
     image: confluentinc/cp-kafka:7.7.1
-    container_name: kpw-kafka
-    hostname: kafka
     ports:
       - "9092:9092"
       - "9101:9101"
     environment:
-      CLUSTER_ID: kafka-php-workshop-cluster
+      CLUSTER_ID: workshop
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
@@ -35,8 +31,6 @@ services:
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.7.1
-    container_name: kpw-schema-registry
-    hostname: schema-registry
     depends_on:
       kafka:
         condition: service_healthy
@@ -56,7 +50,6 @@ services:
 
   kafka-ui:
     image: ghcr.io/kafbat/kafka-ui:latest
-    container_name: kpw-kafka-ui
     depends_on:
       kafka:
         condition: service_healthy
@@ -65,26 +58,23 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: kafka-php-workshop
+      KAFKA_CLUSTERS_0_NAME: workshop
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
       DYNAMIC_CONFIG_ENABLED: "true"
 
   php:
     build:
-      context: ./docker/php
-    container_name: kpw-php
+      context: .
     depends_on:
       kafka:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-    working_dir: /workshop
+    working_dir: /app
     volumes:
-      - ./:/workshop
-    environment:
-      KAFKA_BROKERS: "kafka:29092"
-      SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      - ./:/app
+    # Configuration lives in .env (loaded by bin/console via symfony/dotenv).
     tty: true
     stdin_open: true
     command: ["sleep", "infinity"]
