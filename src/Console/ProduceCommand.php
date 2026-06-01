@@ -30,6 +30,7 @@ final class ProduceCommand extends Command
             ->addArgument('topic', InputArgument::REQUIRED, 'Topic to produce to (e.g. consumer-groups-events)')
             ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'Number of messages to produce', 10)
             ->addOption('key', 'k', InputOption::VALUE_REQUIRED, 'Comma-separated semantic keys; messages cycle through them (crc32(key) routes each key to a fixed partition). Omit for unkeyed: a random partition per message')
+            ->addOption('key-cardinality', null, InputOption::VALUE_REQUIRED, 'Generate this many distinct synthetic keys (key-0..key-{N-1}) and cycle through them; shows even spread from a high-cardinality key. Mutually exclusive with --key')
             ->addOption('partition', 'p', InputOption::VALUE_REQUIRED, 'Pin every message to this partition (overrides key-based routing)')
             ->addOption('payload', null, InputOption::VALUE_REQUIRED, 'Payload template; {n} = 1-based index, {key} = message key', 'event-{n}');
     }
@@ -38,9 +39,25 @@ final class ProduceCommand extends Command
     {
         $topicName = (string) $input->getArgument('topic');
         $count = (int) $input->getOption('count');
-        $keys = $this->parseKeys($input->getOption('key'));
         $partition = null === $input->getOption('partition') ? null : (int) $input->getOption('partition');
         $template = (string) $input->getOption('payload');
+
+        $cardinality = null === $input->getOption('key-cardinality') ? null : (int) $input->getOption('key-cardinality');
+        $keys = $this->parseKeys($input->getOption('key'));
+
+        if (null !== $cardinality && [] !== $keys) {
+            $output->writeln('<error>--key and --key-cardinality are mutually exclusive.</error>');
+
+            return Command::INVALID;
+        }
+        if (null !== $cardinality) {
+            if ($cardinality < 1) {
+                $output->writeln('<error>--key-cardinality must be >= 1.</error>');
+
+                return Command::INVALID;
+            }
+            $keys = array_map(static fn (int $i): string => 'key-' . $i, range(0, $cardinality - 1));
+        }
 
         $context = $this->kafka->forProducer();
         $topic = $context->createTopic($topicName);

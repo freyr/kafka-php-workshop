@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Creates the recommended eCommerce SaaS topic map from Block 2 — Topic
+# Architecture. Idempotent (--if-not-exists), so re-running is safe. Partition
+# counts and the enet.ecommerce.* naming convention mirror
+# blocks/02-topic-architecture.md. Tear down with bin/topic-map-delete.
+#
+# Each entry is "<topic>:<partitions>"; the comment notes the partition key.
+TOPICS=(
+  "enet.ecommerce.orders:6"          # key=orderId   — order lifecycle, ordered per order
+  "enet.ecommerce.payments:6"        # key=orderId   — correlate payments with their order
+  "enet.ecommerce.inventory:12"      # key=productId — sale-spike headroom
+  "enet.ecommerce.users:6"           # key=userId    — low volume
+  "enet.ecommerce.notifications:6"   # key=null      — round-robin, fire-and-forget
+  "enet.internal.dead-letters:3"     # key=preserved — near-zero volume in a healthy system
+)
+
+for entry in "${TOPICS[@]}"; do
+  topic="${entry%%:*}"
+  partitions="${entry##*:}"
+  echo "creating ${topic} (${partitions} partitions)…"
+  docker compose exec -T kafka kafka-topics \
+    --bootstrap-server kafka:29092 \
+    --create --if-not-exists \
+    --topic "$topic" \
+    --partitions "$partitions" --replication-factor 1
+done
+
+echo
+echo "topic map on the broker:"
+docker compose exec -T kafka kafka-topics \
+  --bootstrap-server kafka:29092 --list | grep -E '^enet\.' | sort

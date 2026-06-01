@@ -22,6 +22,7 @@ counterpart to that material.
 ├── bin/
 │   ├── console              # Symfony Console entry — all PHP commands
 │   ├── topic-create / topic-delete / topic-describe
+│   ├── topic-map / topic-map-delete   # create/tear down the eCommerce topic map (Block 2)
 │   ├── group-describe / group-reset / group-delete
 │   └── partition-offsets
 ├── config/
@@ -66,7 +67,7 @@ Two generic commands cover every demo — parametrize them rather than adding ne
 classes:
 
 ```sh
-bin/console produce <topic> [-c N] [--key a,b,c] [-p PARTITION] [--payload 'order-{n}']
+bin/console produce <topic> [-c N] [--key a,b,c | --key-cardinality N] [-p PARTITION] [--payload 'order-{n}']
 bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
 ```
 
@@ -79,6 +80,7 @@ Admin operations against the broker are short bash scripts in `bin/`:
 
 ```sh
 bin/topic-create consumer-groups-events --partitions 1
+bin/topic-map                                       # create the full eCommerce topic map
 bin/group-reset offsets-group earliest offsets-events
 bin/partition-offsets partitioning-events
 ```
