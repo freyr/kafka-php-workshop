@@ -38,7 +38,8 @@ counterpart to that material.
 ## Running the stack
 
 ```sh
-make bootstrap     # first-time: brings the stack up and runs composer install
+make create                                   # bring up kafka + schema registry + kafka-ui (detached)
+docker compose run --rm php composer install  # first-time: install PHP deps in the php container
 ```
 
 Services exposed on the host:
@@ -51,15 +52,28 @@ Services exposed on the host:
 | PHP console      | `bin/console list`          | Run via `docker compose run --rm php`  |
 
 Topic, schema, and consumer-group state lives in the named volume
-`kafka-data`; remove it (`docker compose down -v` or `make nuke`) to reset.
+`kafka-data`; remove it (`docker compose down -v` or `make destroy`) to reset.
 
 ### Running commands
 
 ```sh
-docker compose run --rm php bin/console list                       # show all commands
-docker compose run --rm php bin/console consumer-groups:produce    # produce 5 events
-make c CMD="consumer-groups:consume group-a"                       # shortcut
+docker compose run --rm php bin/console list                                    # show all commands
+docker compose run --rm php bin/console produce consumer-groups-events -c 5      # produce 5 events
+docker compose run --rm php bin/console consume consumer-groups-events -g group-a
 ```
+
+Two generic commands cover every demo — parametrize them rather than adding new
+classes:
+
+```sh
+bin/console produce <topic> [-c N] [--key a,b,c] [-p PARTITION] [--payload 'order-{n}']
+bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
+```
+
+`produce` cycles messages through `--key` (stable key→partition hashing) or pins
+them to `-p`; `consume` under a named `-g` group keeps its committed offsets
+across runs, while omitting `-g` reads the whole topic from earliest under a
+throwaway group (the old "inspect" behavior).
 
 Admin operations against the broker are short bash scripts in `bin/`:
 
@@ -82,13 +96,17 @@ bin/partition-offsets partitioning-events
   service.** Constructor-inject the factory and call `forProducer()` or
   `forConsumer(string $groupId)`. Direct use of raw `RdKafka\*` classes is
   reserved for the block-08 config deep-dive.
-- **Self-describing class names, flat namespace.** Command classes live
-  under `Workshop\Console\` with names like `ProduceOrderEventsCommand`,
-  `ConsumeAsConsumerGroupCommand`, `InspectPartitionAssignmentCommand`.
-  No per-block or per-demo subfolders.
-- **Topic names are constants in `Workshop\Kernel\Topics`.** Cases:
-  `ConsumerGroups`, `Offsets`, `Partitioning` → `consumer-groups-events`,
-  `offsets-events`, `partitioning-events`.
+- **Generic, parametrized commands over per-demo classes.** Two commands —
+  `ProduceCommand` (`produce`) and `ConsumeCommand` (`consume`) — back every
+  block. Topic, key, partition, group, count, and timeout are arguments and
+  options, not hardcoded per exercise, so the CLI mirrors real Kafka tools
+  (`kcat`, `kafka-console-{producer,consumer}`). Add behavior with a flag, not
+  a new class; reach for a new command only for a genuinely distinct operation.
+- **The three workshop topics are cataloged in `Workshop\Kernel\Topics`.**
+  Cases: `ConsumerGroups`, `Offsets`, `Partitioning` → `consumer-groups-events`,
+  `offsets-events`, `partitioning-events`. The commands accept any topic as a
+  plain string argument (real-life); the enum is the canonical name list the
+  blocks and admin scripts use, not a constraint the CLI enforces.
 - **Config lives in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`),
   loaded by `symfony/dotenv`. Per-user overrides go to `.env.local`
   (gitignored).
