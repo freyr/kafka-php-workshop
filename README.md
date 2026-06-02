@@ -28,10 +28,9 @@ counterpart to that material.
 ├── config/
 │   └── services.php         # DI definitions; PSR-4 autodiscovery of services
 ├── src/
-│   ├── Kernel/              # KafkaContextFactory, RawStringSerializer, Topics enum
+│   ├── Kernel/              # KafkaContextFactory, AvroEventSerializer, EventFactory, enums
 │   └── Console/             # One class per command, self-describing names
-├── schemas/                 # Shared AVRO schemas (subjects)
-├── slides/                  # Exported deck assets
+├── schemas/                 # AVRO schemas: common/ + orders/ payments/ inventory/
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # Per-block facilitator notes (gitignored)
 ```
@@ -75,6 +74,21 @@ bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
 them to `-p`; `consume` under a named `-g` group keeps its committed offsets
 across runs, while omitting `-g` reads the whole topic from earliest under a
 throwaway group (the old "inspect" behavior).
+
+For Block 3, a second pair works with **enveloped AVRO** events serialized in
+the Confluent wire format against Schema Registry (schemas in `schemas/`):
+
+```sh
+bin/console events:produce <order-created|payment-processed|inventory-reserved> \
+    [--order-id ID] [--correlation-id ID] [--causation-id ID] [--status SUCCEEDED|FAILED]
+bin/console events:consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]
+```
+
+`events:produce` builds the metadata+payload envelope, AVRO-encodes it,
+auto-registers the subject (`<topic>-value`), and keys the message by
+`aggregate_id`. `events:consume` decodes via the registry and prints the
+envelope. `order-created` prints a ready-to-paste command to chain a caused
+`payment-processed` (shared `correlation_id`, linked `causation_id`).
 
 Admin operations against the broker are short bash scripts in `bin/`:
 

@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "Money",
+  "namespace": "com.ecommerce.common.v1",
+  "doc": "Money as integer minor units + ISO currency code. Avoids floating point and the patchy PHP support for AVRO's decimal logical type. Reference copy — inlined into event schemas.",
+  "fields": [
+    {"name": "amount_cents", "type": "long", "doc": "Amount in the currency's smallest unit (e.g. grosze for PLN)."},
+    {"name": "currency", "type": "string", "doc": "ISO 4217 code, e.g. PLN, EUR."}
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "type": "record",
+  "name": "PaymentProcessed",
+  "namespace": "com.ecommerce.payments.v1",
+  "doc": "Published after the payment gateway returns a result for a payment attempt. status and payment_method are strings (not enums) so the value set can grow without breaking consumers. Self-contained schema.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common.v1",
+        "doc": "Standard envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "event_type", "type": "string"},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+          {"name": "source_service", "type": "string"},
+          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
+          {"name": "tenant_id", "type": "string"},
+          {"name": "aggregate_id", "type": "string"},
+          {"name": "schema_version", "type": "int", "default": 1}
+        ]
+      }
+    },
+    {"name": "payment_id", "type": "string", "doc": "Unique id for this payment attempt."},
+    {"name": "order_id", "type": "string", "doc": "The order this payment is for."},
+    {"name": "status", "type": "string", "doc": "SUCCEEDED | FAILED | PENDING (string for safe evolution)."},
+    {"name": "payment_method", "type": "string", "doc": "CREDIT_CARD | BANK_TRANSFER | BLIK | PAYPAL (string for extensibility)."},
+    {
+      "name": "amount",
+      "type": {
+        "type": "record",
+        "name": "Money",
+        "namespace": "com.ecommerce.common.v1",
+        "fields": [
+          {"name": "amount_cents", "type": "long"},
+          {"name": "currency", "type": "string"}
+        ]
+      }
+    },
+    {"name": "gateway_transaction_id", "type": ["null", "string"], "default": null, "doc": "Gateway reference; null if the payment failed before reaching the gateway."},
+    {"name": "failure_reason", "type": ["null", "string"], "default": null, "doc": "Human-readable reason when status is FAILED."},
+    {"name": "failure_code", "type": ["null", "string"], "default": null, "doc": "Machine-readable failure code from the gateway."},
+    {"name": "processed_at", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

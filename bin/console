@@ -5,6 +5,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Keep workshop output clean: hide deprecation notices emitted by third-party
+// libraries (e.g. the schema-registry client) under PHP 8.4.
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Console\Application;
 use Symfony\Component\DependencyInjection\ContainerBuilder;

@@ -1,0 +1,105 @@
+{
+  "type": "record",
+  "name": "OrderCreated",
+  "namespace": "com.ecommerce.orders.v1",
+  "doc": "Published when a customer completes checkout. Fat integration event: consumers are self-sufficient. Self-contained schema — shared types (EventMetadata, Money, Address) are inlined so it registers as a single subject; canonical copies live under schemas/common/.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common.v1",
+        "doc": "Standard envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "event_type", "type": "string", "doc": "Fully-qualified type, e.g. ecommerce.orders.v1.OrderCreated."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the business action happened (UTC epoch millis)."},
+          {"name": "source_service", "type": "string"},
+          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Ties all events in one business workflow together."},
+          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null, "doc": "event_id of the event that directly caused this one."},
+          {"name": "tenant_id", "type": "string", "doc": "Critical for SaaS isolation/routing."},
+          {"name": "aggregate_id", "type": "string", "doc": "Entity this event belongs to; typically the message key."},
+          {"name": "schema_version", "type": "int", "default": 1}
+        ]
+      }
+    },
+    {"name": "order_id", "type": "string", "doc": "Business identifier for the order."},
+    {
+      "name": "customer",
+      "type": {
+        "type": "record",
+        "name": "CustomerReference",
+        "namespace": "com.ecommerce.common.v1",
+        "doc": "Curated customer data — not the full profile.",
+        "fields": [
+          {"name": "customer_id", "type": "string"},
+          {"name": "email", "type": "string"},
+          {"name": "display_name", "type": "string"}
+        ]
+      }
+    },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "OrderItem",
+          "namespace": "com.ecommerce.orders.v1",
+          "fields": [
+            {"name": "product_id", "type": "string"},
+            {"name": "sku", "type": "string"},
+            {"name": "product_name", "type": "string"},
+            {"name": "quantity", "type": "int"},
+            {
+              "name": "unit_price",
+              "type": {
+                "type": "record",
+                "name": "Money",
+                "namespace": "com.ecommerce.common.v1",
+                "doc": "Money as integer minor units + currency — avoids float and AVRO decimal woes.",
+                "fields": [
+                  {"name": "amount_cents", "type": "long"},
+                  {"name": "currency", "type": "string"}
+                ]
+              }
+            },
+            {"name": "line_total", "type": "com.ecommerce.common.v1.Money"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "shipping_address",
+      "type": {
+        "type": "record",
+        "name": "Address",
+        "namespace": "com.ecommerce.common.v1",
+        "fields": [
+          {"name": "street", "type": "string"},
+          {"name": "city", "type": "string"},
+          {"name": "postal_code", "type": "string"},
+          {"name": "country", "type": "string"},
+          {"name": "state", "type": ["null", "string"], "default": null}
+        ]
+      }
+    },
+    {
+      "name": "totals",
+      "type": {
+        "type": "record",
+        "name": "OrderTotals",
+        "namespace": "com.ecommerce.orders.v1",
+        "fields": [
+          {"name": "subtotal", "type": "com.ecommerce.common.v1.Money"},
+          {"name": "shipping_cost", "type": "com.ecommerce.common.v1.Money"},
+          {"name": "tax", "type": "com.ecommerce.common.v1.Money"},
+          {"name": "total", "type": "com.ecommerce.common.v1.Money"}
+        ]
+      }
+    },
+    {"name": "placed_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the customer completed checkout."},
+    {"name": "notes", "type": ["null", "string"], "default": null, "doc": "Optional customer order notes."}
+  ]
+}

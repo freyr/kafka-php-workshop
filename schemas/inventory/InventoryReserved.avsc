@@ -1,0 +1,50 @@
+{
+  "type": "record",
+  "name": "InventoryReserved",
+  "namespace": "com.ecommerce.inventory.v1",
+  "doc": "Published when stock has been successfully reserved for an order. Self-contained schema.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common.v1",
+        "doc": "Standard envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "event_type", "type": "string"},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+          {"name": "source_service", "type": "string"},
+          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
+          {"name": "tenant_id", "type": "string"},
+          {"name": "aggregate_id", "type": "string"},
+          {"name": "schema_version", "type": "int", "default": 1}
+        ]
+      }
+    },
+    {"name": "reservation_id", "type": "string", "doc": "Unique id for this reservation."},
+    {"name": "order_id", "type": "string", "doc": "The order this reservation is for."},
+    {
+      "name": "reserved_items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "ReservedItem",
+          "namespace": "com.ecommerce.inventory.v1",
+          "fields": [
+            {"name": "product_id", "type": "string"},
+            {"name": "sku", "type": "string"},
+            {"name": "quantity", "type": "int"},
+            {"name": "warehouse_id", "type": "string", "doc": "Which warehouse the stock is reserved in."},
+            {"name": "warehouse_location", "type": ["null", "string"], "default": null, "doc": "Bin/shelf location, if tracked."}
+          ]
+        }
+      }
+    },
+    {"name": "reserved_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "expires_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the reservation expires if the order is not confirmed."}
+  ]
+}

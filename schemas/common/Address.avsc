@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "Address",
+  "namespace": "com.ecommerce.common.v1",
+  "doc": "Postal address value object. Reference copy — inlined into event schemas. Note state is an optional field with a null default (evolution-safe).",
+  "fields": [
+    {"name": "street", "type": "string"},
+    {"name": "city", "type": "string"},
+    {"name": "postal_code", "type": "string"},
+    {"name": "country", "type": "string", "doc": "ISO 3166-1 alpha-2 code, e.g. PL."},
+    {"name": "state", "type": ["null", "string"], "default": null, "doc": "Region/state where applicable."}
+  ]
+}
