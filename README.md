@@ -182,6 +182,32 @@ re-run — duplicates are skipped on `event_id`. `dlt:inspect` reads the shared
 `enet.internal.dead-letters` topic and prints each message's origin, error, retry
 count, and reason. Routing/metadata live in `src/Kernel/RetryRouter.php`.
 
+For Block 8, a config-and-operations deep dive — the one block that drops below
+the `enqueue` abstraction to raw `\RdKafka`, because the callbacks it teaches
+(delivery report, rebalance, statistics) have no `enqueue` surface:
+
+```sh
+bin/console config:show [--producer] [--consumer]              # recommended config: value · default · why
+bin/console config:stats [topic] [-g GROUP] [-r RUNTIME_SECS] \
+    [--slow MS] [--stats-interval MS] [-m MAX] [-t TIMEOUT_MS]  # raw consumer: lag/RTT from the stats callback
+```
+
+`config:show` prints the workshop's recommended producer and consumer librdkafka
+settings with the librdkafka default and a one-line rationale for each, so every
+non-default value can be defended (the values live in `src/Kernel/KafkaTuning.php`
+and drop into `KafkaContextFactory::forProducer($overrides)` /
+`forConsumer($group, $overrides)` — they are intentionally not baked into the
+factory's globals). `config:stats` is a raw php-rdkafka consumer that wires the
+`statistics`, `rebalance` (cooperative-sticky, incremental assign), and `error`
+callbacks: it prints **consumer lag, broker RTT, and fetch-queue depth** straight
+from the librdkafka stats JSON — the only window a PHP consumer has, since there
+is no JMX. Produce a backlog first, then add `--slow 40` to watch lag drain in
+real time; Ctrl-C does a graceful raw `commit()` + `close()` (immediate
+LeaveGroup). Note: php-rdkafka's high-level `KafkaConsumer` has no
+`storeOffsets()`, so the at-least-once pattern here is `enable.auto.commit=false`
++ explicit `commit($message)` after processing — exactly what `enqueue`'s
+`acknowledge()` does under the hood.
+
 Admin operations against the broker are short bash scripts in `bin/`:
 
 ```sh

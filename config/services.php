@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Workshop\Console\ConfigStatsCommand;
 use Workshop\Kernel\AvroEventSerializer;
 use Workshop\Kernel\Database;
 use Workshop\Kernel\KafkaContextFactory;
@@ -48,4 +49,9 @@ return function (ContainerConfigurator $c): void {
     // Database (Block 5 idempotency demo) takes the DBAL connection URL.
     $services->set(Database::class)
         ->arg('$url', '%database.url%');
+
+    // ConfigStatsCommand (Block 8 raw-rdkafka deep dive) needs the broker list as
+    // a string — same non-autowirable case as KafkaContextFactory.
+    $services->set(ConfigStatsCommand::class)
+        ->arg('$brokers', '%kafka.brokers%');
 };
