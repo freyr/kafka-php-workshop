@@ -6,6 +6,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Workshop\Kernel\AvroEventSerializer;
 use Workshop\Kernel\KafkaContextFactory;
+use Workshop\Kernel\SchemaRegistryClient;
 
 return function (ContainerConfigurator $c): void {
     $services = $c->services()
@@ -37,5 +38,9 @@ return function (ContainerConfigurator $c): void {
 
     // AvroEventSerializer takes the Schema Registry URL — bind the named arg.
     $services->set(AvroEventSerializer::class)
+        ->arg('$schemaRegistryUrl', '%schema_registry.url%');
+
+    // SchemaRegistryClient (Block 4 tooling) also takes the Schema Registry URL.
+    $services->set(SchemaRegistryClient::class)
         ->arg('$schemaRegistryUrl', '%schema_registry.url%');
 };
