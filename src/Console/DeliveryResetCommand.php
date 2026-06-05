@@ -10,18 +10,20 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Workshop\Kernel\Database;
 use Workshop\Kernel\IdempotencyStore;
-use Workshop\Kernel\SideEffectLog;
+use Workshop\Kernel\SideEffectStore;
 
 #[AsCommand(
     name: 'delivery:reset',
-    description: 'Block 5 demo: clear the side-effect log and idempotency store so the demo can be replayed from a clean slate.',
+    description: 'Block 5 demo: truncate the side_effects and processed_events tables so the demo can be replayed from a clean slate.',
 )]
 final class DeliveryResetCommand extends Command
 {
     public function __construct(
-        private readonly IdempotencyStore $store,
-        private readonly SideEffectLog $sideEffects,
+        private readonly Database $db,
+        private readonly IdempotencyStore $idempotency,
+        private readonly SideEffectStore $sideEffects,
     ) {
         parent::__construct();
     }
@@ -35,10 +37,12 @@ final class DeliveryResetCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->sideEffects->reset();
-        $this->store->reset();
+        $this->db->ensureSchema();
+        $conn = $this->db->connection();
+        $this->sideEffects->truncate($conn);
+        $this->idempotency->truncate($conn);
 
-        $output->writeln('<info>cleared</info> side-effect log + idempotency store.');
+        $output->writeln('<info>truncated</info> side_effects + processed_events.');
         $output->writeln('');
         $output->writeln('<comment>To replay the same messages, also rewind the group offset:</comment>');
         $output->writeln(sprintf(

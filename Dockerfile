@@ -16,6 +16,7 @@ RUN docker-php-ext-install -j"$(nproc)" \
         intl \
         opcache \
         pcntl \
+        pdo_mysql \
         sockets \
         zip
 

@@ -2,11 +2,12 @@
 
 Working repo for a 2-day Kafka-for-PHP-teams workshop. Holds runnable demo
 commands, AVRO schemas, slide assets, and a Docker stack with Kafka,
-Confluent Schema Registry, Kafka UI, and a PHP 8.4 container with
+Confluent Schema Registry, Kafka UI, MySQL, and a PHP 8.4 container with
 `php-rdkafka` (extension) + [`enqueue/rdkafka`](https://github.com/php-enqueue/rdkafka)
-(queue-interop wrapper used by all PHP commands), wired through
-`symfony/console` + `symfony/dependency-injection` (with PSR-4
-autodiscovery via `symfony/config`) and configured through `symfony/dotenv`.
+(queue-interop wrapper used by all PHP commands) + `doctrine/dbal` (the
+Block 5 idempotency demo), wired through `symfony/console` +
+`symfony/dependency-injection` (with PSR-4 autodiscovery via `symfony/config`)
+and configured through `symfony/dotenv`.
 
 Per-block facilitator notes live locally in `blocks/` (gitignored — pulled
 from the Consulting vault `PHP-Kafka-Research/`). This repo is the runnable
@@ -16,8 +17,8 @@ counterpart to that material.
 
 ```
 .
-├── compose.yaml             # Compose stack: Kafka + SR + UI + PHP
-├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka image
+├── compose.yaml             # Compose stack: Kafka + SR + UI + MySQL + PHP
+├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka + pdo_mysql image
 ├── .env                     # Workshop defaults (loaded by bin/console)
 ├── bin/
 │   ├── console              # Symfony Console entry — all PHP commands
@@ -28,7 +29,8 @@ counterpart to that material.
 ├── config/
 │   └── services.php         # DI definitions; PSR-4 autodiscovery of services
 ├── src/
-│   ├── Kernel/              # KafkaContextFactory, AvroEventSerializer, EventFactory, enums
+│   ├── Kernel/              # KafkaContextFactory, AvroEventSerializer, SchemaRegistryClient,
+│   │                        #   Database + IdempotencyStore + SideEffectStore (Block 5), enums
 │   └── Console/             # One class per command, self-describing names
 ├── schemas/                 # AVRO schemas: common/ + orders/ payments/ inventory/
 ├── tests/                   # PHPUnit suite
@@ -38,7 +40,7 @@ counterpart to that material.
 ## Running the stack
 
 ```sh
-make create                                   # bring up kafka + schema registry + kafka-ui (detached)
+make create                                   # bring up kafka + schema registry + kafka-ui + mysql (detached)
 docker compose run --rm php composer install  # first-time: install PHP deps in the php container
 ```
 
@@ -49,10 +51,12 @@ Services exposed on the host:
 | Kafka broker     | `localhost:9092`            | KRaft mode, single broker              |
 | Schema Registry  | `http://localhost:8081`     | Confluent SR, `AVRO` schemas           |
 | Kafka UI         | `http://localhost:8080`     | Kafbat fork of the old provectus UI    |
+| MySQL            | `localhost:3306`            | `workshop`/`workshop`, db `workshop` — Block 5 idempotency |
 | PHP console      | `bin/console list`          | Run via `docker compose run --rm php`  |
 
-Topic, schema, and consumer-group state lives in the named volume
-`kafka-data`; remove it (`docker compose down -v` or `make destroy`) to reset.
+Topic, schema, and consumer-group state lives in the named volume `kafka-data`;
+MySQL data in `mysql-data`. Remove them (`docker compose down -v` or
+`make destroy`) to reset.
 
 ### Running commands
 
@@ -90,6 +94,34 @@ auto-registers the subject (`<topic>-value`), and keys the message by
 envelope. `order-created` prints a ready-to-paste command to chain a caused
 `payment-processed` (shared `correlation_id`, linked `causation_id`).
 
+For Block 4, two commands inspect schema evolution against the registry:
+
+```sh
+bin/console schema:check <type> <schema-file>   # is a candidate .avsc compatible with the latest? (CI gate; non-zero exit on fail)
+bin/console schema:versions <type>              # list the registered version lineage [1, 2, …]
+```
+
+`schema:check` is the pre-registration compatibility check (read-only). Demo
+schemas live in `schemas/orders/evolution/` — `OrderCreated-v2-compatible.avsc`
+(optional field + default → PASS) and `-v2-breaking.avsc` (required field, no
+default → FAIL).
+
+For Block 5, a delivery-guarantees demo shows at-least-once vs. idempotent
+processing, backed by MySQL via `doctrine/dbal`:
+
+```sh
+bin/console delivery:consume [topic] [-g GROUP] [--idempotent] [--crash-after N] [-m MAX] [-t TIMEOUT_MS]
+bin/console delivery:reset                       # truncate side_effects + processed_events
+```
+
+`delivery:consume` applies a side-effect row per order event; `--crash-after N`
+applies N then exits **without** committing the Kafka offset (simulating a crash
+after the DB commit but before the offset commit), so a recovery run redelivers.
+Without `--idempotent` the recovery duplicates the side-effect; with it, the
+`event_id` recorded in `processed_events` (same transaction as the side-effect)
+makes the redelivery a no-op. The idempotency record and the side-effect commit
+in one DBAL transaction; the Kafka offset is committed separately and last.
+
 Admin operations against the broker are short bash scripts in `bin/`:
 
 ```sh
@@ -123,9 +155,9 @@ bin/partition-offsets partitioning-events
   `offsets-events`, `partitioning-events`. The commands accept any topic as a
   plain string argument (real-life); the enum is the canonical name list the
   blocks and admin scripts use, not a constraint the CLI enforces.
-- **Config lives in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`),
-  loaded by `symfony/dotenv`. Per-user overrides go to `.env.local`
-  (gitignored).
+- **Config lives in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`,
+  `DATABASE_URL`), loaded by `symfony/dotenv`. Per-user overrides go to
+  `.env.local` (gitignored).
 - **Admin shell scripts in `bin/`** wrap `docker compose exec kafka` calls
   to the Kafka CLI — `enqueue/rdkafka` has no admin API, so these stay
   shell.

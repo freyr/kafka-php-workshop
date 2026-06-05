@@ -63,6 +63,23 @@ services:
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
       DYNAMIC_CONFIG_ENABLED: "true"
 
+  mysql:
+    image: mysql:8.4
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: workshop
+      MYSQL_DATABASE: workshop
+      MYSQL_USER: workshop
+      MYSQL_PASSWORD: workshop
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pworkshop"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   php:
     profiles:
       - cli
@@ -74,3 +91,4 @@ services:
 
 volumes:
   kafka-data:
+  mysql-data:

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Workshop\Kernel\AvroEventSerializer;
+use Workshop\Kernel\Database;
 use Workshop\Kernel\KafkaContextFactory;
 use Workshop\Kernel\SchemaRegistryClient;
 
@@ -43,4 +44,8 @@ return function (ContainerConfigurator $c): void {
     // SchemaRegistryClient (Block 4 tooling) also takes the Schema Registry URL.
     $services->set(SchemaRegistryClient::class)
         ->arg('$schemaRegistryUrl', '%schema_registry.url%');
+
+    // Database (Block 5 idempotency demo) takes the DBAL connection URL.
+    $services->set(Database::class)
+        ->arg('$url', '%database.url%');
 };
