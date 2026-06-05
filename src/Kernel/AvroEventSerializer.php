@@ -45,12 +45,31 @@ final readonly class AvroEventSerializer
     }
 
     /**
+     * Decode a Confluent-framed message back to a PHP array.
+     *
+     * With no reader schema (the default) the message is decoded with its own
+     * *writer* schema — the one pinned by the schema id in the bytes — so you get
+     * the structure exactly as it was produced (an old message comes back in its
+     * old shape, missing fields added later).
+     *
+     * Pass $readerSchemaJson to decode through AVRO *schema resolution*: the writer
+     * schema parses the bytes, then the result is projected onto the reader schema,
+     * filling defaults for fields the writer lacked and dropping fields the reader
+     * does not declare. In production the reader schema is the one your code ships
+     * with (pinned to the build, not fetched as registry "latest"), so every
+     * historical version resolves to one consistent shape you can normalize into a
+     * DTO. This only succeeds across the version range the subject's compatibility
+     * mode guarantees — FULL for both directions, the *_TRANSITIVE variant for deep
+     * history. A genuine incompatibility throws; route that poison message to a DLQ.
+     *
      * @return array<string, mixed>
      */
-    public function decode(string $binary): array
+    public function decode(string $binary, ?string $readerSchemaJson = null): array
     {
+        $readerSchema = null !== $readerSchemaJson ? \AvroSchema::parse($readerSchemaJson) : null;
+
         /** @var array<string, mixed> $decoded */
-        $decoded = $this->serializer->decodeMessage($binary);
+        $decoded = $this->serializer->decodeMessage($binary, $readerSchema);
 
         return $decoded;
     }
