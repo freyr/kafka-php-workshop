@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deletes the Debezium outbox connector (Block 6). The MySQL replication slot and
+# the schema-history / output topics are left in place — drop the whole stack with
+# 'make destroy' to wipe everything.
+
+CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
+NAME="${1:-outbox-connector}"
+
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}" && echo "deleted ${NAME}" || {
+  echo "no connector '${NAME}' to delete (or Connect unreachable)." >&2
+}

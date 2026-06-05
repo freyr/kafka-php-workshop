@@ -2,7 +2,8 @@
 
 Working repo for a 2-day Kafka-for-PHP-teams workshop. Holds runnable demo
 commands, AVRO schemas, slide assets, and a Docker stack with Kafka,
-Confluent Schema Registry, Kafka UI, MySQL, and a PHP 8.4 container with
+Confluent Schema Registry, Kafka UI, MySQL, Kafka Connect (Debezium CDC for
+the Block 6 outbox), and a PHP 8.4 container with
 `php-rdkafka` (extension) + [`enqueue/rdkafka`](https://github.com/php-enqueue/rdkafka)
 (queue-interop wrapper used by all PHP commands) + `doctrine/dbal` (the
 Block 5 idempotency demo), wired through `symfony/console` +
@@ -17,7 +18,7 @@ counterpart to that material.
 
 ```
 .
-├── compose.yaml             # Compose stack: Kafka + SR + UI + MySQL + PHP
+├── compose.yaml             # Compose stack: Kafka + SR + UI + MySQL + Connect + PHP
 ├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka + pdo_mysql image
 ├── .env                     # Workshop defaults (loaded by bin/console)
 ├── bin/
@@ -25,12 +26,15 @@ counterpart to that material.
 │   ├── topic-create / topic-delete / topic-describe
 │   ├── topic-map / topic-map-delete   # create/tear down the eCommerce topic map (Block 2)
 │   ├── group-describe / group-reset / group-delete
-│   └── partition-offsets
+│   ├── partition-offsets
+│   └── debezium-register / debezium-status / debezium-delete   # Debezium outbox connector (Block 6)
 ├── config/
-│   └── services.php         # DI definitions; PSR-4 autodiscovery of services
+│   ├── services.php         # DI definitions; PSR-4 autodiscovery of services
+│   └── debezium-outbox-connector.json   # Debezium MySQL + Outbox Event Router config (Block 6)
 ├── src/
 │   ├── Kernel/              # KafkaContextFactory, AvroEventSerializer, SchemaRegistryClient,
-│   │                        #   Database + IdempotencyStore + SideEffectStore (Block 5), enums
+│   │                        #   Database + IdempotencyStore + SideEffectStore (Block 5),
+│   │                        #   OutboxStore (Block 6), enums
 │   └── Console/             # One class per command, self-describing names
 ├── schemas/                 # AVRO schemas: common/ + orders/ payments/ inventory/
 ├── tests/                   # PHPUnit suite
@@ -40,7 +44,7 @@ counterpart to that material.
 ## Running the stack
 
 ```sh
-make create                                   # bring up kafka + schema registry + kafka-ui + mysql (detached)
+make create                                   # bring up kafka + schema registry + kafka-ui + mysql + connect (detached)
 docker compose run --rm php composer install  # first-time: install PHP deps in the php container
 ```
 
@@ -51,7 +55,8 @@ Services exposed on the host:
 | Kafka broker     | `localhost:9092`            | KRaft mode, single broker              |
 | Schema Registry  | `http://localhost:8081`     | Confluent SR, `AVRO` schemas           |
 | Kafka UI         | `http://localhost:8080`     | Kafbat fork of the old provectus UI    |
-| MySQL            | `localhost:3306`            | `workshop`/`workshop`, db `workshop` — Block 5 idempotency |
+| MySQL            | `localhost:3306`            | `workshop`/`workshop`, db `workshop` — Block 5/6 stores  |
+| Kafka Connect    | `http://localhost:8083`     | Debezium (CDC outbox relay, Block 6)   |
 | PHP console      | `bin/console list`          | Run via `docker compose run --rm php`  |
 
 Topic, schema, and consumer-group state lives in the named volume `kafka-data`;
@@ -121,6 +126,39 @@ Without `--idempotent` the recovery duplicates the side-effect; with it, the
 `event_id` recorded in `processed_events` (same transaction as the side-effect)
 makes the redelivery a no-op. The idempotency record and the side-effect commit
 in one DBAL transaction; the Kafka offset is committed separately and last.
+
+For Block 6, an outbox demo shows the dual-write problem and its fix, with two
+relays — a PHP polling relay and Debezium CDC:
+
+```sh
+bin/console outbox:place [--order-id ID] [--naive] [--crash]   # place an order
+bin/console outbox:relay [--once] [-b BATCH] [-p POLL_SECS]     # polling relay → AVRO on the orders topic
+bin/console outbox:reset                                        # truncate orders + outbox
+```
+
+`outbox:place` writes the `orders` row and an `OrderCreated` event to the `outbox`
+table in **one** DBAL transaction; `--crash` exits right after the commit (the
+event is safe — a relay publishes it later). `--naive` instead commits the order
+and then publishes to Kafka directly — with `--crash` that loses the event (the
+dual-write trap). `outbox:relay` publishes unpublished rows as AVRO envelopes
+(read them with `events:consume enet.ecommerce.orders`), flushing to the broker
+before marking each row published, so it is at-least-once by design.
+
+The same outbox table can be shipped by **Debezium CDC** instead of the polling
+relay (needs the `connect` service, started by `make create`):
+
+```sh
+bin/debezium-register      # waits for Connect, creates topics, registers the connector
+bin/debezium-status        # connector + task state (expect RUNNING)
+bin/console outbox:place   # then consume the routed topic:
+bin/console consume enet.ecommerce.outbox.Order
+bin/debezium-delete        # remove the connector
+```
+
+The Outbox Event Router routes by `aggregate_type` to `enet.ecommerce.outbox.Order`,
+keys by `aggregate_id`, and unwraps the `payload` column to JSON. Config lives in
+`config/debezium-outbox-connector.json`. Debezium **3.x** is required for MySQL 8.4
+and the `mysql` service runs row-based binlog.
 
 Admin operations against the broker are short bash scripts in `bin/`:
 

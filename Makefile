@@ -33,3 +33,11 @@ topics: ## list all topics on the broker
 
 groups: ## list all consumer groups
 	docker compose exec kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list
+
+##@ Debezium (Block 6 CDC outbox)
+debezium-register: ## register the Debezium MySQL outbox connector
+	bin/debezium-register
+debezium-status: ## show the connector + task state
+	bin/debezium-status
+debezium-delete: ## delete the connector
+	bin/debezium-delete

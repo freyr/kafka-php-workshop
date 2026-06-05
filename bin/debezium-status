@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Shows the Debezium outbox connector + task state (Block 6). Pretty-prints with
+# jq when available, raw JSON otherwise.
+
+CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
+NAME="${1:-outbox-connector}"
+
+if command -v jq >/dev/null 2>&1; then
+  curl -fsS "${CONNECT_URL}/connectors/${NAME}/status" | jq .
+else
+  curl -fsS "${CONNECT_URL}/connectors/${NAME}/status"
+  echo
+fi

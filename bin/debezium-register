@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Registers the Debezium MySQL outbox connector (Block 6 — CDC relay). Waits for
+# the Kafka Connect REST API, pre-creates the routed + schema-history topics
+# (broker auto-create is off), then (re)creates the connector from
+# config/debezium-outbox-connector.json. Idempotent: drops any existing connector
+# of the same name first, so re-running picks up config edits cleanly.
+
+CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG="${ROOT}/config/debezium-outbox-connector.json"
+NAME="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -n1)"
+
+echo "waiting for Kafka Connect at ${CONNECT_URL} …"
+for _ in $(seq 1 60); do
+  if curl -fsS "${CONNECT_URL}/" >/dev/null 2>&1; then break; fi
+  sleep 2
+done
+curl -fsS "${CONNECT_URL}/" >/dev/null || { echo "Kafka Connect is not reachable — is the stack up? Try 'make create'." >&2; exit 1; }
+
+# Output + schema-history topics: the broker has auto-create disabled, so the
+# connector cannot create them itself. Make them explicitly (idempotent).
+for entry in "enet.ecommerce.outbox.Order:6" "schema-history.outbox:1"; do
+  topic="${entry%%:*}"; partitions="${entry##*:}"
+  echo "ensuring topic ${topic} (${partitions} partitions)…"
+  docker compose exec -T kafka kafka-topics \
+    --bootstrap-server kafka:29092 --create --if-not-exists \
+    --topic "$topic" --partitions "$partitions" --replication-factor 1
+done
+
+echo "dropping any existing '${NAME}' …"
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}" >/dev/null 2>&1 || true
+
+echo "registering connector '${NAME}' …"
+curl -fsS -X POST "${CONNECT_URL}/connectors" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@${CONFIG}"
+echo
+
+echo
+echo "registered. Check status with:  bin/debezium-status"
+echo "then place an order and watch CDC:"
+echo "  docker compose run --rm php bin/console outbox:place"
+echo "  docker compose run --rm php bin/console consume enet.ecommerce.outbox.Order"
