@@ -160,6 +160,28 @@ keys by `aggregate_id`, and unwraps the `payload` column to JSON. Config lives i
 `config/debezium-outbox-connector.json`. Debezium **3.x** is required for MySQL 8.4
 and the `mysql` service runs row-based binlog.
 
+For Block 7, a retry/DLT demo shows error classification, a bounded
+in-process-retry → retry-topic chain → Dead Letter Topic, and DLT recovery
+(the retry tiers and shared DLT are created by `bin/topic-map`):
+
+```sh
+bin/console retry:consume [topic] [--poison=id,…] [--flaky=id,…] [--naive] \
+    [--in-process-retries N] [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--memory-limit MB]
+bin/console dlt:inspect [topic] [-t TIMEOUT_MS]            # print DLT error metadata
+bin/console dlt:replay  [topic] [--dry-run] [-t TIMEOUT_MS] # re-publish to the original topic
+```
+
+`retry:consume` classifies failures: `--poison` ids go straight to the DLT (0
+retries), `--flaky` ids fail their in-process retries then route to
+`enet.ecommerce.orders.retry.5s` and succeed when that tier re-delivers them
+(point a second `retry:consume` at the retry topic to drain it). It acks only
+after a message succeeds or is durably routed, so the partition never blocks;
+`--naive` drops the routing and exits without acking to show a stuck partition.
+Success applies the Block 5 side-effect idempotently, so `dlt:replay` is safe to
+re-run — duplicates are skipped on `event_id`. `dlt:inspect` reads the shared
+`enet.internal.dead-letters` topic and prints each message's origin, error, retry
+count, and reason. Routing/metadata live in `src/Kernel/RetryRouter.php`.
+
 Admin operations against the broker are short bash scripts in `bin/`:
 
 ```sh
