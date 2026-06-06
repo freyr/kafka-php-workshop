@@ -6,8 +6,9 @@ namespace Workshop\Kernel;
 
 /**
  * The three event types the Block 3 demo can produce. Each case knows its
- * topic, schema file, registry subject (TopicNameStrategy: <topic>-value), and
- * fully-qualified event_type string.
+ * topic, schema file, registry subject (RecordNameStrategy: the fully-qualified
+ * record name, record component in lower_snake_case), and fully-qualified
+ * event_type string.
  */
 enum WorkshopEvent: string
 {
@@ -26,7 +27,15 @@ enum WorkshopEvent: string
 
     public function subject(): string
     {
-        return $this->topic() . '-value';
+        // RecordNameStrategy: the subject is the schema's fully-qualified record
+        // name (namespace + record), so each event type carries its own
+        // compatibility lineage independent of the topic it shares. The record
+        // component is lower_snake_case by our naming convention.
+        return match ($this) {
+            self::OrderCreated => 'com.ecommerce.orders.v1.order_created',
+            self::PaymentProcessed => 'com.ecommerce.payments.v1.payment_processed',
+            self::InventoryReserved => 'com.ecommerce.inventory.v1.inventory_reserved',
+        };
     }
 
     public function eventType(): string

@@ -247,7 +247,10 @@ bin/partition-offsets partitioning-events
 - **Admin shell scripts in `bin/`** wrap `docker compose exec kafka` calls
   to the Kafka CLI — `enqueue/rdkafka` has no admin API, so these stay
   shell.
-- One topic per event type; subject naming follows `TopicNameStrategy`
-  unless noted in the block exercise.
+- One topic per entity/aggregate, carrying multiple event types over its
+  lifetime; subject naming follows `RecordNameStrategy` — the subject is the
+  schema's fully-qualified record name (record component in `lower_snake_case`,
+  e.g. `com.ecommerce.orders.v1.order_created`), so each event type evolves on
+  its own compatibility lineage independent of its topic-mates.
 - Polish-language comments are acceptable in workshop exercises (delivered
   in Polish); code identifiers and shipped demos stay in English.
