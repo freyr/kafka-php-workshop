@@ -17,7 +17,7 @@ final class EventFactory
     private const string DEFAULT_TENANT = 'tenant-acme-corp';
 
     /**
-     * @param array<string, string> $opts order_id, correlation_id, causation_id, tenant_id, status
+     * @param array<string, string> $opts order_id, correlation_id, causation_id, tenant_id, status, reason
      *
      * @return array<string, mixed>
      */
@@ -25,9 +25,49 @@ final class EventFactory
     {
         return match ($type) {
             WorkshopEvent::OrderCreated => $this->orderCreated($opts),
+            WorkshopEvent::OrderUpdated => $this->orderUpdated($opts),
+            WorkshopEvent::OrderCancelled => $this->orderCancelled($opts),
             WorkshopEvent::PaymentProcessed => $this->paymentProcessed($opts),
             WorkshopEvent::InventoryReserved => $this->inventoryReserved($opts),
         };
+    }
+
+    /**
+     * @param array<string, string> $opts
+     *
+     * @return array<string, mixed>
+     */
+    private function orderUpdated(array $opts): array
+    {
+        $orderId = $opts['order_id'] ?? $this->generateId('ord');
+
+        return [
+            'metadata' => $this->metadata(WorkshopEvent::OrderUpdated, $orderId, $opts),
+            'order_id' => $orderId,
+            'status' => $opts['status'] ?? 'PAID',
+            'previous_status' => 'CREATED',
+            'updated_at' => $this->nowMillis(),
+            'note' => null,
+        ];
+    }
+
+    /**
+     * @param array<string, string> $opts
+     *
+     * @return array<string, mixed>
+     */
+    private function orderCancelled(array $opts): array
+    {
+        $orderId = $opts['order_id'] ?? $this->generateId('ord');
+
+        return [
+            'metadata' => $this->metadata(WorkshopEvent::OrderCancelled, $orderId, $opts),
+            'order_id' => $orderId,
+            'reason' => $opts['reason'] ?? 'CUSTOMER_REQUEST',
+            'cancelled_by' => null,
+            'refund_amount' => null,
+            'cancelled_at' => $this->nowMillis(),
+        ];
     }
 
     /**

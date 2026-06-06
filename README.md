@@ -88,16 +88,28 @@ For Block 3, a second pair works with **enveloped AVRO** events serialized in
 the Confluent wire format against Schema Registry (schemas in `schemas/`):
 
 ```sh
-bin/console events:produce <order-created|payment-processed|inventory-reserved> \
-    [--order-id ID] [--correlation-id ID] [--causation-id ID] [--status SUCCEEDED|FAILED]
-bin/console events:consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]
+bin/console events:produce <order-created|order-updated|order-cancelled|payment-processed|inventory-reserved> \
+    [--order-id ID] [--correlation-id ID] [--causation-id ID] [--status STATUS] [--reason REASON]
+bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # decode + print the envelope
+bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by event_type
 ```
 
 `events:produce` builds the metadata+payload envelope, AVRO-encodes it,
-auto-registers the subject (`<topic>-value`), and keys the message by
-`aggregate_id`. `events:consume` decodes via the registry and prints the
-envelope. `order-created` prints a ready-to-paste command to chain a caused
-`payment-processed` (shared `correlation_id`, linked `causation_id`).
+auto-registers the subject (the fully-qualified record name —
+`RecordNameStrategy`, e.g. `com.ecommerce.orders.v1.order_created`), and keys the
+message by `aggregate_id`. `events:consume` decodes via the registry and prints
+the envelope.
+
+**Multiple event types per topic.** `order-created`, `order-updated`, and
+`order-cancelled` all live on the **same** `enet.ecommerce.orders` topic — each
+its own subject/compatibility lineage under RecordNameStrategy, all keyed by
+`order_id` so one order's lifecycle stays ordered within a partition.
+`events:dispatch` is the consumer side: it decodes each message and routes by
+`event_type` to a per-type handler (open / update / cancel), ignores types it
+doesn't handle (forward-compatibility), and skips non-AVRO bytes rather than
+crashing. `order-created` prints a ready-to-paste lifecycle to drive the demo
+(`order-updated` → `order-cancelled` → `events:dispatch`), plus the caused
+`payment-processed` branch (shared `correlation_id`, linked `causation_id`).
 
 For Block 4, two commands inspect schema evolution against the registry:
 
