@@ -41,6 +41,14 @@ final readonly class KafkaContextFactory
             'group.id' => $groupId,
             'enable.auto.commit' => 'false',
             'auto.offset.reset' => 'earliest',
+            // Cooperative (incremental) rebalancing for every consumer: only the
+            // partitions that move are revoked, the rest keep processing — no
+            // stop-the-world rebalance. librdkafka handles the incremental
+            // assign/unassign internally on the subscribe() path, so no custom
+            // rebalance callback is needed through enqueue. All members of a group
+            // must share this strategy, which holds here (each command is its own
+            // group). Raw config:stats sets the same value explicitly (Block 8).
+            'partition.assignment.strategy' => 'cooperative-sticky',
         ], $overrides);
     }
 

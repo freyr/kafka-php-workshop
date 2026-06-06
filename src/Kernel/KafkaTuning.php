@@ -10,11 +10,14 @@ namespace Workshop\Kernel;
  * feeds the consumer values straight into a raw RdKafka\Conf.
  *
  * Defaults quoted here are librdkafka's own (see CONFIGURATION.md) so the
- * "value vs default" column shows exactly what we are changing and why. These
- * values are intentionally NOT wired into KafkaContextFactory's globals —
+ * "value vs default" column shows exactly what we are changing and why. With one
+ * exception these values are NOT wired into KafkaContextFactory's globals —
  * flipping compression or idempotence for every command would change the other
- * blocks' demos. The notes show the injection point
- * (`forProducer($overrides)` / `forConsumer($group, $overrides)`).
+ * blocks' demos, so they stay opt-in via the injection point
+ * (`forProducer($overrides)` / `forConsumer($group, $overrides)`). The exception
+ * is `partition.assignment.strategy=cooperative-sticky`, which IS the factory
+ * default for every consumer (it is safe — each command is its own group and
+ * librdkafka handles the incremental rebalance internally).
  */
 final readonly class KafkaTuning
 {
