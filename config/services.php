@@ -42,6 +42,9 @@ return function (ContainerConfigurator $c): void {
             __DIR__ . '/../src/Kafka/Config/ClientRole.php',
             __DIR__ . '/../src/Kafka/Config/KafkaSetting.php',
             __DIR__ . '/../src/Kafka/Config/KafkaProfile.php',
+            // Callbacks are constructed per-call by the factories (with a narrator),
+            // never injected — exclude the whole directory like the value objects.
+            __DIR__ . '/../src/Kafka/Callback',
             __DIR__ . '/../src/Kafka/Runtime/CommitPolicy.php',
             __DIR__ . '/../src/Kafka/Runtime/RunLimits.php',
         ]);
