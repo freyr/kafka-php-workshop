@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use PhpCsFixer\Fixer\Operator\ConcatSpaceFixer;
 use PhpCsFixer\Fixer\Phpdoc\PhpdocToCommentFixer;
 use Symplify\EasyCodingStandard\Config\ECSConfig;
 
@@ -26,4 +27,7 @@ return ECSConfig::configure()
     // Keep inline `/** @var ... */` hints as real docblocks. The @Symfony set's
     // PhpdocToCommentFixer otherwise demotes any /** */ not attached to a
     // structural element to /* */, which PHPStan then ignores.
-    ->withConfiguredRule(PhpdocToCommentFixer::class, ['ignored_tags' => ['var']]);
+    ->withConfiguredRule(PhpdocToCommentFixer::class, ['ignored_tags' => ['var']])
+    // Keep the project's spaced concatenation (`'a' . 'b'`, the @PER-CS style).
+    // @Symfony wants no spaces, and ECS 13's set resolution lets it win otherwise.
+    ->withConfiguredRule(ConcatSpaceFixer::class, ['spacing' => 'one']);
