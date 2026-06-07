@@ -2,22 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kernel;
+namespace Workshop\Kafka\Config;
 
 /**
  * The workshop's recommended production producer/consumer configuration, as a
  * single source of truth. `config:show` renders these tables; `config:stats`
- * feeds the consumer values straight into a raw RdKafka\Conf.
+ * feeds the consumer values straight into a raw RdKafka\Conf, and ProfileRegistry
+ * composes these settings into the named client profiles.
  *
  * Defaults quoted here are librdkafka's own (see CONFIGURATION.md) so the
  * "value vs default" column shows exactly what we are changing and why. With one
- * exception these values are NOT wired into KafkaContextFactory's globals —
- * flipping compression or idempotence for every command would change the other
- * blocks' demos, so they stay opt-in via the injection point
- * (`forProducer($overrides)` / `forConsumer($group, $overrides)`). The exception
- * is `partition.assignment.strategy=cooperative-sticky`, which IS the factory
- * default for every consumer (it is safe — each command is its own group and
- * librdkafka handles the incremental rebalance internally).
+ * exception these values are NOT wired into every client by default — flipping
+ * compression or idempotence for every command would change the other blocks'
+ * demos, so they are opt-in through the named profiles (producer.idempotent,
+ * consumer.at-least-once). The exception is
+ * `partition.assignment.strategy=cooperative-sticky`, which every consumer profile
+ * carries (it is safe — each command is its own group and librdkafka handles the
+ * incremental rebalance internally).
  */
 final readonly class KafkaTuning
 {
@@ -60,9 +61,9 @@ final readonly class KafkaTuning
     }
 
     /**
-     * Producer settings as plain key => value, shaped to drop into
-     * KafkaContextFactory::forProducer($overrides). gethostname()-style dynamic
-     * values are producer-irrelevant and omitted here.
+     * Producer settings as plain key => value, shaped to drop into a raw
+     * RdKafka\Conf. gethostname()-style dynamic values are producer-irrelevant
+     * and omitted here.
      *
      * @return array<string, string>
      */
@@ -72,9 +73,9 @@ final readonly class KafkaTuning
     }
 
     /**
-     * Consumer settings as plain key => value for a raw RdKafka\Conf or
-     * KafkaContextFactory::forConsumer($group, $overrides). group.instance.id is
-     * resolved to the real hostname here rather than the literal placeholder.
+     * Consumer settings as plain key => value for a raw RdKafka\Conf.
+     * group.instance.id is resolved to the real hostname here rather than the
+     * literal placeholder.
      *
      * @return array<string, string>
      */

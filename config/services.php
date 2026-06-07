@@ -31,6 +31,18 @@ return function (ContainerConfigurator $c): void {
             __DIR__ . '/../src/Kernel/WorkshopEvent.php',
         ]);
 
+    // The pure php-rdkafka layer (Blocks 1-3). Concept-named sub-namespaces under
+    // src/Kafka/ become autowired services; the value objects and enums are
+    // constructed, never injected, so they are excluded like Topics/WorkshopEvent.
+    $services->load('Workshop\\Kafka\\', __DIR__ . '/../src/Kafka/')
+        ->exclude([
+            __DIR__ . '/../src/Kafka/Config/ClientRole.php',
+            __DIR__ . '/../src/Kafka/Config/KafkaSetting.php',
+            __DIR__ . '/../src/Kafka/Config/KafkaProfile.php',
+            __DIR__ . '/../src/Kafka/Runtime/CommitPolicy.php',
+            __DIR__ . '/../src/Kafka/Runtime/RunLimits.php',
+        ]);
+
     $services->load('Workshop\\Console\\', __DIR__ . '/../src/Console/');
 
     // KafkaContextFactory takes a string broker list, which can't be type-hint-

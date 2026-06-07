@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kernel;
+namespace Workshop\Kafka\Config;
 
 /**
  * One librdkafka configuration property the workshop recommends, paired with the
