@@ -54,7 +54,7 @@ final class ConfigShowCommand extends Command
         }
 
         $output->writeln('');
-        $output->writeln('<comment>bold value = differs from the librdkafka default. Inject via KafkaContextFactory::forProducer($overrides) / forConsumer($group, $overrides).</comment>');
+        $output->writeln('<comment>bold value = differs from the librdkafka default. Inject via ConfBuilder::build($profile, $runtimeOverrides).</comment>');
 
         return Command::SUCCESS;
     }

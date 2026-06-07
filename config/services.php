@@ -9,8 +9,6 @@ use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\TcpBrokerProbe;
 use Workshop\Kernel\AvroEventSerializer;
-use Workshop\Kernel\Database;
-use Workshop\Kernel\KafkaContextFactory;
 use Workshop\Kernel\SchemaRegistryClient;
 
 return function (ContainerConfigurator $c): void {
@@ -55,11 +53,6 @@ return function (ContainerConfigurator $c): void {
 
     $services->load('Workshop\\Console\\', __DIR__ . '/../src/Console/');
 
-    // KafkaContextFactory takes a string broker list, which can't be type-hint-
-    // autowired. Bind the named arg to the container parameter.
-    $services->set(KafkaContextFactory::class)
-        ->arg('$brokers', '%kafka.brokers%');
-
     // AvroEventSerializer takes the Schema Registry URL — bind the named arg.
     $services->set(AvroEventSerializer::class)
         ->arg('$schemaRegistryUrl', '%schema_registry.url%');
@@ -68,12 +61,8 @@ return function (ContainerConfigurator $c): void {
     $services->set(SchemaRegistryClient::class)
         ->arg('$schemaRegistryUrl', '%schema_registry.url%');
 
-    // Database (Block 5 idempotency demo) takes the DBAL connection URL.
-    $services->set(Database::class)
-        ->arg('$url', '%database.url%');
-
     // ConfigStatsCommand (Block 8 raw-rdkafka deep dive) needs the broker list as
-    // a string — same non-autowirable case as KafkaContextFactory.
+    // a string, which can't be type-hint-autowired — bind the named arg.
     $services->set(ConfigStatsCommand::class)
         ->arg('$brokers', '%kafka.brokers%');
 

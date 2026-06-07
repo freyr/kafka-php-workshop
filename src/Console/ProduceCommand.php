@@ -19,6 +19,8 @@ use Workshop\Kafka\Serde\StringSerializer;
 )]
 final class ProduceCommand extends Command
 {
+    use InputCasts;
+
     public function __construct(
         private readonly ProducerFactory $producers,
         private readonly StringSerializer $serializer,
@@ -40,14 +42,14 @@ final class ProduceCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = (string) $input->getArgument('topic');
-        $count = (int) $input->getOption('count');
-        $partition = null === $input->getOption('partition') ? null : (int) $input->getOption('partition');
-        $template = (string) $input->getOption('payload');
-        $profile = (string) $input->getOption('profile');
+        $topicName = $this->argString($input, 'topic');
+        $count = $this->optInt($input, 'count');
+        $partition = $this->optIntOrNull($input, 'partition');
+        $template = $this->optString($input, 'payload') ?? 'event-{n}';
+        $profile = $this->optString($input, 'profile') ?? 'producer.simple';
 
-        $cardinality = null === $input->getOption('key-cardinality') ? null : (int) $input->getOption('key-cardinality');
-        $keys = $this->parseKeys($input->getOption('key'));
+        $cardinality = $this->optIntOrNull($input, 'key-cardinality');
+        $keys = $this->parseKeys($this->optString($input, 'key'));
 
         if (null !== $cardinality && [] !== $keys) {
             $output->writeln('<error>--key and --key-cardinality are mutually exclusive.</error>');
@@ -91,14 +93,14 @@ final class ProduceCommand extends Command
     /**
      * @return list<string>
      */
-    private function parseKeys(mixed $raw): array
+    private function parseKeys(?string $raw): array
     {
         if (null === $raw) {
             return [];
         }
 
         return array_values(array_filter(
-            array_map('trim', explode(',', (string) $raw)),
+            array_map('trim', explode(',', $raw)),
             static fn (string $key): bool => '' !== $key,
         ));
     }

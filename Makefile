@@ -27,6 +27,10 @@ ecs: ## report easy-coding-standard violations
 ecs-fix: ## auto-fix easy-coding-standard violations
 	docker compose run --rm php composer ecs-fix
 
+##@ Static analysis
+phpstan: ## run phpstan static analysis (level max)
+	docker compose run --rm php composer phpstan
+
 ##@ Kafka inspection
 topics: ## list all topics on the broker
 	docker compose exec kafka kafka-topics --bootstrap-server kafka:29092 --list

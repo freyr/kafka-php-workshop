@@ -21,7 +21,9 @@ final readonly class RebalanceCallback implements ConfCallback
 
     public function attachTo(\RdKafka\Conf $conf): void
     {
-        $conf->setRebalanceCb(function (\RdKafka\KafkaConsumer $consumer, int $err, ?array $partitions = null): void {
+        $conf->setRebalanceCb(
+            /** @param array<int, \RdKafka\TopicPartition>|null $partitions */
+            function (\RdKafka\KafkaConsumer $consumer, int $err, ?array $partitions = null): void {
             switch ($err) {
                 case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
                     $this->narrate('⇄ assign ' . $this->names($partitions));

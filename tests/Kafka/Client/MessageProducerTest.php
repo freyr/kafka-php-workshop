@@ -22,7 +22,7 @@ final class MessageProducerTest extends TestCase
             {
                 $this->encoded[] = $payload;
 
-                return 'ENC:' . $payload;
+                return 'ENC:' . (is_scalar($payload) ? $payload : '');
             }
 
             public function decode(string $bytes): mixed

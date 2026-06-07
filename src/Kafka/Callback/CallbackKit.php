@@ -19,7 +19,7 @@ final readonly class CallbackKit
 
     public function __construct(ConfCallback ...$callbacks)
     {
-        $this->callbacks = $callbacks;
+        $this->callbacks = array_values($callbacks);
     }
 
     public function attachTo(\RdKafka\Conf $conf): void

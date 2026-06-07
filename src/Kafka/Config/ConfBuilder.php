@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Config;
 
+use RdKafka\Conf;
+
 /**
  * The single seam between config-as-data and the extension: the only place in the
  * workshop that turns a KafkaProfile (plus runtime parameters like group.id) into
@@ -24,11 +26,11 @@ final readonly class ConfBuilder
     /**
      * @param array<string, string|int> $runtime librdkafka overrides applied last (e.g. group.id)
      */
-    public function build(KafkaProfile $profile, array $runtime = []): \RdKafka\Conf
+    public function build(KafkaProfile $profile, array $runtime = []): Conf
     {
         $this->probe->assertReachable($this->brokers);
 
-        $conf = new \RdKafka\Conf();
+        $conf = new Conf();
         $conf->set('metadata.broker.list', $this->brokers);
         // A readable client.id so every workshop client is identifiable broker-side.
         $conf->set('client.id', sprintf('workshop.%s.%d', $profile->role->value, getmypid()));

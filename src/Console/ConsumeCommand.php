@@ -24,6 +24,8 @@ use Workshop\Kafka\Runtime\RunLimits;
 )]
 final class ConsumeCommand extends Command
 {
+    use InputCasts;
+
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
@@ -43,12 +45,13 @@ final class ConsumeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = (string) $input->getArgument('topic');
-        $max = (int) $input->getOption('max');
-        $timeoutMs = (int) $input->getOption('timeout');
+        $topicName = $this->argString($input, 'topic');
+        $max = $this->optInt($input, 'max');
+        $timeoutMs = $this->optInt($input, 'timeout');
         $commit = ! (bool) $input->getOption('no-commit');
-        $named = null !== $input->getOption('group');
-        $group = $this->resolveGroup($input->getOption('group'), $topicName);
+        $groupOption = $this->optString($input, 'group');
+        $named = null !== $groupOption;
+        $group = $this->resolveGroup($groupOption, $topicName);
 
         $output->writeln(sprintf('<comment>group=%s commit=%s</comment>', $group, $commit ? 'yes' : 'no'));
 
@@ -58,7 +61,9 @@ final class ConsumeCommand extends Command
         $policy = $commit ? CommitPolicy::AfterEachMessage : CommitPolicy::None;
 
         $narrate = $output->isVerbose()
-            ? static fn (string $line): mixed => $output->writeln('  <comment>' . $line . '</comment>')
+            ? function (string $line) use ($output): void {
+                $output->writeln('  <comment>' . $line . '</comment>');
+            }
             : null;
 
         $consumer = $this->consumers->create($profile, $group, $this->callbacks($narrate));
@@ -99,10 +104,10 @@ final class ConsumeCommand extends Command
      * behaviour); an ephemeral, never-reused id forces every run to start at the
      * earliest offset — handy for inspecting a topic's full contents.
      */
-    private function resolveGroup(mixed $group, string $topicName): string
+    private function resolveGroup(?string $group, string $topicName): string
     {
         if (null !== $group) {
-            return (string) $group;
+            return $group;
         }
 
         return sprintf('ephemeral-%s-%d-%d', $topicName, getmypid(), time());

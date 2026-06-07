@@ -14,7 +14,7 @@ namespace Workshop\Kafka\Callback;
 final readonly class StatsCallback implements ConfCallback
 {
     /**
-     * @param (\Closure(array<string, mixed>): void)|null $onStats
+     * @param (\Closure(array<mixed, mixed>): void)|null $onStats
      */
     public function __construct(
         private ?\Closure $onStats = null,

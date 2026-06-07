@@ -6,15 +6,21 @@ namespace Workshop\Kafka\Serde;
 
 /**
  * Keeps payloads on the wire as plain strings — the Block 1-2 default, before AVRO
- * is introduced. The pure-rdkafka counterpart to the enqueue-coupled
- * Kernel\RawStringSerializer (which implements an enqueue interface and so cannot
- * be reused here).
+ * is introduced.
  */
 final readonly class StringSerializer implements MessageSerializer
 {
     public function encode(mixed $payload): string
     {
-        return (string) $payload;
+        if (is_string($payload)) {
+            return $payload;
+        }
+
+        if (is_scalar($payload) || $payload instanceof \Stringable) {
+            return (string) $payload;
+        }
+
+        throw new \InvalidArgumentException(sprintf('%s can only encode stringable payloads, got %s.', self::class, get_debug_type($payload)));
     }
 
     public function decode(string $bytes): mixed

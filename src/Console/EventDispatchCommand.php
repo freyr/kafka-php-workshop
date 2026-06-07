@@ -23,6 +23,9 @@ use Workshop\Kernel\WorkshopEvent;
 )]
 final class EventDispatchCommand extends Command
 {
+    use EventEnvelope;
+    use InputCasts;
+
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
@@ -42,11 +45,12 @@ final class EventDispatchCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topic = (string) $input->getArgument('topic');
-        $max = (int) $input->getOption('max');
-        $timeoutMs = (int) $input->getOption('timeout');
-        $named = null !== $input->getOption('group');
-        $group = $named ? (string) $input->getOption('group') : sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
+        $topic = $this->argString($input, 'topic');
+        $max = $this->optInt($input, 'max');
+        $timeoutMs = $this->optInt($input, 'timeout');
+        $groupOption = $this->optString($input, 'group');
+        $named = null !== $groupOption;
+        $group = $groupOption ?? sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
 
         $output->writeln(sprintf('<comment>dispatching %s · group=%s — routing by event_type</comment>', $topic, $group));
 
@@ -73,9 +77,15 @@ final class EventDispatchCommand extends Command
                 return;
             }
 
-            $metadata = $event['metadata'] ?? [];
-            $eventType = (string) ($metadata['event_type'] ?? '');
-            $orderId = (string) ($event['order_id'] ?? ($metadata['aggregate_id'] ?? '?'));
+            $metadata = $this->metadataOf($event);
+            $eventType = $this->string($metadata, 'event_type');
+            $orderId = $this->digString($event, 'order_id');
+            if ('' === $orderId) {
+                $orderId = $this->string($metadata, 'aggregate_id');
+            }
+            if ('' === $orderId) {
+                $orderId = '?';
+            }
 
             // Dispatch by type — the heart of a multi-type-topic consumer.
             match (true) {
@@ -118,9 +128,9 @@ final class EventDispatchCommand extends Command
      */
     private function onCreated(OutputInterface $output, string $orderId, array $event, array &$tally): void
     {
-        $customer = $event['customer']['display_name'] ?? '?';
-        $total = $event['totals']['total']['amount_cents'] ?? 0;
-        $output->writeln(sprintf('  <info>▶ OPEN</info>   order=%s — new order for %s (total %d)', $orderId, $customer, $total));
+        $customer = $this->digString($event, 'customer', 'display_name');
+        $total = $this->digInt($event, 'totals', 'total', 'amount_cents');
+        $output->writeln(sprintf('  <info>▶ OPEN</info>   order=%s — new order for %s (total %d)', $orderId, '' !== $customer ? $customer : '?', $total));
         ++$tally['created'];
     }
 
@@ -130,8 +140,8 @@ final class EventDispatchCommand extends Command
      */
     private function onUpdated(OutputInterface $output, string $orderId, array $event, array &$tally): void
     {
-        $from = $event['previous_status'] ?? '?';
-        $to = $event['status'] ?? '?';
+        $from = $this->digString($event, 'previous_status') ?: '?';
+        $to = $this->digString($event, 'status') ?: '?';
         $output->writeln(sprintf('  <comment>✎ UPDATE</comment> order=%s — status %s → %s', $orderId, $from, $to));
         ++$tally['updated'];
     }
@@ -142,7 +152,7 @@ final class EventDispatchCommand extends Command
      */
     private function onCancelled(OutputInterface $output, string $orderId, array $event, array &$tally): void
     {
-        $reason = $event['reason'] ?? '?';
+        $reason = $this->digString($event, 'reason') ?: '?';
         $output->writeln(sprintf('  <error>✗ CANCEL</error> order=%s — reason %s', $orderId, $reason));
         ++$tally['cancelled'];
     }

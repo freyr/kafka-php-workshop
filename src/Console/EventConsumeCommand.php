@@ -22,6 +22,8 @@ use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 )]
 final class EventConsumeCommand extends Command
 {
+    use InputCasts;
+
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
@@ -41,11 +43,12 @@ final class EventConsumeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topic = (string) $input->getArgument('topic');
-        $max = (int) $input->getOption('max');
-        $timeoutMs = (int) $input->getOption('timeout');
-        $named = null !== $input->getOption('group');
-        $group = $named ? (string) $input->getOption('group') : sprintf('ephemeral-%s-%d', $topic, getmypid());
+        $topic = $this->argString($input, 'topic');
+        $max = $this->optInt($input, 'max');
+        $timeoutMs = $this->optInt($input, 'timeout');
+        $groupOption = $this->optString($input, 'group');
+        $named = null !== $groupOption;
+        $group = $groupOption ?? sprintf('ephemeral-%s-%d', $topic, getmypid());
 
         $consumer = $this->consumers->create($named ? 'consumer.at-least-once' : 'consumer.ephemeral', $group);
 

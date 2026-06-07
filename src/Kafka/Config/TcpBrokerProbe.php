@@ -7,7 +7,7 @@ namespace Workshop\Kafka\Config;
 use Workshop\Kernel\BrokerUnreachableException;
 
 /**
- * Quick TCP probe of the first broker (ported from the enqueue KafkaContextFactory)
+ * Quick TCP probe of the first broker (ported from the original enqueue-based layer)
  * so a stopped stack surfaces "did you forget to start the broker?" rather than a
  * 90-second librdkafka transport timeout.
  */
