@@ -79,7 +79,7 @@ final readonly class SchemaRegistryClient
 
         $body = json_decode($response['body'], true);
 
-        return \is_array($body) ? array_map('intval', $body) : [];
+        return \is_array($body) ? array_map(static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0, $body) : [];
     }
 
     /**

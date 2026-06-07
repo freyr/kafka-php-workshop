@@ -17,8 +17,6 @@ use Workshop\Kafka\Client\AdminFactory;
 )]
 final class TopicDescribeCommand extends Command
 {
-    use InputCasts;
-
     public function __construct(
         private readonly AdminFactory $admin,
     ) {
@@ -32,7 +30,7 @@ final class TopicDescribeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $name = $this->argString($input, 'topic');
+        $name = Input::string($input, 'topic');
 
         try {
             $info = $this->admin->create()->describe($name);

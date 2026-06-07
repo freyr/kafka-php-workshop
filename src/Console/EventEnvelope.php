@@ -19,8 +19,12 @@ trait EventEnvelope
     private function metadataOf(array $event): array
     {
         $metadata = $event['metadata'] ?? [];
+        if (! is_array($metadata)) {
+            return [];
+        }
 
-        return is_array($metadata) ? $metadata : [];
+        /** @var array<string, mixed> $metadata */
+        return $metadata;
     }
 
     /**

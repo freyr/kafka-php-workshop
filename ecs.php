@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use PhpCsFixer\Fixer\Phpdoc\PhpdocToCommentFixer;
 use Symplify\EasyCodingStandard\Config\ECSConfig;
 
 /** @noinspection PhpUnhandledExceptionInspection */
@@ -21,4 +22,8 @@ return ECSConfig::configure()
         docblocks: true,
         spaces: true,
         namespaces: true,
-    );
+    )
+    // Keep inline `/** @var ... */` hints as real docblocks. The @Symfony set's
+    // PhpdocToCommentFixer otherwise demotes any /** */ not attached to a
+    // structural element to /* */, which PHPStan then ignores.
+    ->withConfiguredRule(PhpdocToCommentFixer::class, ['ignored_tags' => ['var']]);

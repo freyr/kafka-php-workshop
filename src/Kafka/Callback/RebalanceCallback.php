@@ -24,24 +24,24 @@ final readonly class RebalanceCallback implements ConfCallback
         $conf->setRebalanceCb(
             /** @param array<int, \RdKafka\TopicPartition>|null $partitions */
             function (\RdKafka\KafkaConsumer $consumer, int $err, ?array $partitions = null): void {
-            switch ($err) {
-                case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
-                    $this->narrate('⇄ assign ' . $this->names($partitions));
-                    $consumer->incrementalAssign($partitions ?? []);
+                switch ($err) {
+                    case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
+                        $this->narrate('⇄ assign ' . $this->names($partitions));
+                        $consumer->incrementalAssign($partitions ?? []);
 
-                    break;
+                        break;
 
-                case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
-                    $this->narrate('⇄ revoke ' . $this->names($partitions));
-                    $consumer->incrementalUnassign($partitions ?? []);
+                    case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
+                        $this->narrate('⇄ revoke ' . $this->names($partitions));
+                        $consumer->incrementalUnassign($partitions ?? []);
 
-                    break;
+                        break;
 
-                default:
-                    $this->narrate('rebalance error: ' . rd_kafka_err2str($err));
-                    $consumer->assign(null);
-            }
-        });
+                    default:
+                        $this->narrate('rebalance error: ' . rd_kafka_err2str($err));
+                        $consumer->assign(null);
+                }
+            });
     }
 
     /**

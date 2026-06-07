@@ -33,14 +33,14 @@ final class SchemaCheckCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom((string) $input->getArgument('type'));
+        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
         if (null === $type) {
             $output->writeln('<error>Unknown event type. Use: order-created | payment-processed | inventory-reserved</error>');
 
             return Command::INVALID;
         }
 
-        $file = (string) $input->getArgument('schema-file');
+        $file = Input::string($input, 'schema-file');
         $schemaJson = @file_get_contents($file);
         if (false === $schemaJson) {
             $output->writeln("<error>Cannot read schema file: {$file}</error>");

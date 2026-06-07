@@ -19,8 +19,6 @@ use Workshop\Kafka\Serde\StringSerializer;
 )]
 final class ProduceCommand extends Command
 {
-    use InputCasts;
-
     public function __construct(
         private readonly ProducerFactory $producers,
         private readonly StringSerializer $serializer,
@@ -42,14 +40,14 @@ final class ProduceCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = $this->argString($input, 'topic');
-        $count = $this->optInt($input, 'count');
-        $partition = $this->optIntOrNull($input, 'partition');
-        $template = $this->optString($input, 'payload') ?? 'event-{n}';
-        $profile = $this->optString($input, 'profile') ?? 'producer.simple';
+        $topicName = Input::string($input, 'topic');
+        $count = Input::int($input, 'count');
+        $partition = Input::intOrNull($input, 'partition');
+        $template = Input::string($input, 'payload');
+        $profile = Input::string($input, 'profile');
 
-        $cardinality = $this->optIntOrNull($input, 'key-cardinality');
-        $keys = $this->parseKeys($this->optString($input, 'key'));
+        $cardinality = Input::intOrNull($input, 'key-cardinality');
+        $keys = $this->parseKeys(Input::stringOrNull($input, 'key'));
 
         if (null !== $cardinality && [] !== $keys) {
             $output->writeln('<error>--key and --key-cardinality are mutually exclusive.</error>');

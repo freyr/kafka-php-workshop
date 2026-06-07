@@ -24,7 +24,6 @@ use Workshop\Kernel\WorkshopEvent;
 final class EventDispatchCommand extends Command
 {
     use EventEnvelope;
-    use InputCasts;
 
     public function __construct(
         private readonly ConsumerFactory $consumers,
@@ -45,10 +44,10 @@ final class EventDispatchCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topic = $this->argString($input, 'topic');
-        $max = $this->optInt($input, 'max');
-        $timeoutMs = $this->optInt($input, 'timeout');
-        $groupOption = $this->optString($input, 'group');
+        $topic = Input::string($input, 'topic');
+        $max = Input::int($input, 'max');
+        $timeoutMs = Input::int($input, 'timeout');
+        $groupOption = Input::stringOrNull($input, 'group');
         $named = null !== $groupOption;
         $group = $groupOption ?? sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
 

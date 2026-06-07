@@ -45,13 +45,13 @@ final class ConfigStatsCommand extends Command
             return Command::FAILURE;
         }
 
-        $topic = (string) $input->getArgument('topic');
-        $group = $this->resolveGroup($input->getOption('group'), $topic);
-        $runtime = (int) $input->getOption('runtime');
-        $max = (int) $input->getOption('max');
-        $timeoutMs = (int) $input->getOption('timeout');
-        $statsInterval = (int) $input->getOption('stats-interval');
-        $slowMs = max(0, (int) $input->getOption('slow'));
+        $topic = Input::string($input, 'topic');
+        $group = $this->resolveGroup(Input::stringOrNull($input, 'group'), $topic);
+        $runtime = Input::int($input, 'runtime');
+        $max = Input::int($input, 'max');
+        $timeoutMs = Input::int($input, 'timeout');
+        $statsInterval = Input::int($input, 'stats-interval');
+        $slowMs = max(0, Input::int($input, 'slow'));
 
         // Graceful shutdown — flip $running and let the loop fall through to the
         // raw commit() + close() sequence. close() sends LeaveGroup immediately,
@@ -234,10 +234,10 @@ final class ConfigStatsCommand extends Command
      * from earliest every run so the backlog — and the lag draining to zero — is
      * visible in the stats output.
      */
-    private function resolveGroup(mixed $group, string $topic): string
+    private function resolveGroup(?string $group, string $topic): string
     {
         if (null !== $group) {
-            return (string) $group;
+            return $group;
         }
 
         return sprintf('config-stats-%s-%d-%d', $topic, getmypid(), time());

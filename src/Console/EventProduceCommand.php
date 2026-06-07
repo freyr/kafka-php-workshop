@@ -23,7 +23,6 @@ use Workshop\Kernel\WorkshopEvent;
 final class EventProduceCommand extends Command
 {
     use EventEnvelope;
-    use InputCasts;
 
     public function __construct(
         private readonly ProducerFactory $producers,
@@ -46,7 +45,7 @@ final class EventProduceCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom($this->argString($input, 'type'));
+        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
         if (null === $type) {
             $output->writeln('<error>Unknown event type. Use: order-created | order-updated | order-cancelled | payment-processed | inventory-reserved</error>');
 

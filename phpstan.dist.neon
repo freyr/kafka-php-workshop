@@ -1,3 +1,17 @@
+# The baseline holds 35 level-max errors that are NOT code defects. Three causes:
+#   1. ext-rdkafka stub gaps — php-rdkafka ships no PHPStan stubs, so the bundled
+#      reflection misses the cooperative-rebalance API (KafkaConsumer::incremental
+#      Assign/Unassign), types Message::$key as non-nullable string (it is null for
+#      unkeyed messages), and types the setRebalanceCb callback's $partitions as a
+#      bare array. Real fix: ship a RdKafka stub file and point stubFiles at it.
+#   2. pcntl signal handler — $running is flipped inside a pcntl_signal closure that
+#      PHPStan's flow analysis cannot see, so it reads `! $running` as always false.
+#   3. librdkafka statistics JSON — config:stats decodes the stats blob to mixed and
+#      walks it; fully typing that nested structure is a deliberate non-goal for the
+#      teaching command. See docs summary for details.
+includes:
+    - phpstan-baseline.neon
+
 parameters:
     level: max
     paths:

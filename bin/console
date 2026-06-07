@@ -11,17 +11,20 @@ error_reporting(E_ALL & ~E_DEPRECATED);
 
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\Dotenv\Dotenv;
 
 (new Dotenv())->bootEnv(__DIR__ . '/../.env');
 
+// $_ENV values are typed as mixed; narrow each to a string with a default.
+$env = static fn (string $key, string $default): string => is_string($value = $_ENV[$key] ?? null) ? $value : $default;
+
 $container = new ContainerBuilder();
 
-$container->setParameter('kafka.brokers', $_ENV['KAFKA_BROKERS'] ?? 'kafka:29092');
-$container->setParameter('schema_registry.url', $_ENV['SCHEMA_REGISTRY_URL'] ?? 'http://schema-registry:8081');
-$container->setParameter('database.url', $_ENV['DATABASE_URL'] ?? 'mysql://workshop:workshop@mysql:3306/workshop?charset=utf8mb4');
+$container->setParameter('kafka.brokers', $env('KAFKA_BROKERS', 'kafka:29092'));
+$container->setParameter('schema_registry.url', $env('SCHEMA_REGISTRY_URL', 'http://schema-registry:8081'));
 
 (new PhpFileLoader($container, new FileLocator(__DIR__ . '/../config')))
     ->load('services.php');
@@ -30,7 +33,10 @@ $container->compile();
 
 $app = new Application('kafka-php-workshop', 'dev');
 foreach (array_keys($container->findTaggedServiceIds('console.command')) as $id) {
-    $app->addCommand($container->get($id));
+    $command = $container->get($id);
+    if ($command instanceof Command) {
+        $app->addCommand($command);
+    }
 }
 
 exit($app->run());

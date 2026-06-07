@@ -31,7 +31,7 @@ final class SchemaVersionsCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom((string) $input->getArgument('type'));
+        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
         if (null === $type) {
             $output->writeln('<error>Unknown event type. Use: order-created | payment-processed | inventory-reserved</error>');
 

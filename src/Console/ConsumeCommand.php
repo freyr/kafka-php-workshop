@@ -24,8 +24,6 @@ use Workshop\Kafka\Runtime\RunLimits;
 )]
 final class ConsumeCommand extends Command
 {
-    use InputCasts;
-
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
@@ -45,11 +43,11 @@ final class ConsumeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = $this->argString($input, 'topic');
-        $max = $this->optInt($input, 'max');
-        $timeoutMs = $this->optInt($input, 'timeout');
+        $topicName = Input::string($input, 'topic');
+        $max = Input::int($input, 'max');
+        $timeoutMs = Input::int($input, 'timeout');
         $commit = ! (bool) $input->getOption('no-commit');
-        $groupOption = $this->optString($input, 'group');
+        $groupOption = Input::stringOrNull($input, 'group');
         $named = null !== $groupOption;
         $group = $this->resolveGroup($groupOption, $topicName);
 
@@ -64,7 +62,7 @@ final class ConsumeCommand extends Command
             ? function (string $line) use ($output): void {
                 $output->writeln('  <comment>' . $line . '</comment>');
             }
-            : null;
+        : null;
 
         $consumer = $this->consumers->create($profile, $group, $this->callbacks($narrate));
 
