@@ -47,6 +47,10 @@ return function (ContainerConfigurator $c): void {
             __DIR__ . '/../src/Kafka/Callback',
             __DIR__ . '/../src/Kafka/Runtime/CommitPolicy.php',
             __DIR__ . '/../src/Kafka/Runtime/RunLimits.php',
+            // Client wrappers built by the factories around a raw \RdKafka client —
+            // not autowirable, never injected directly.
+            __DIR__ . '/../src/Kafka/Client/MessageProducer.php',
+            __DIR__ . '/../src/Kafka/Admin/TopicAdmin.php',
         ]);
 
     $services->load('Workshop\\Console\\', __DIR__ . '/../src/Console/');
