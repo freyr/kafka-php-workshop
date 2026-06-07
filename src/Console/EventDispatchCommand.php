@@ -10,8 +10,11 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Workshop\Kernel\AvroEventSerializer;
-use Workshop\Kernel\KafkaContextFactory;
+use Workshop\Kafka\Client\ConsumerFactory;
+use Workshop\Kafka\Runtime\CommitPolicy;
+use Workshop\Kafka\Runtime\ConsumerRunner;
+use Workshop\Kafka\Runtime\RunLimits;
+use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kernel\WorkshopEvent;
 
 #[AsCommand(
@@ -21,8 +24,9 @@ use Workshop\Kernel\WorkshopEvent;
 final class EventDispatchCommand extends Command
 {
     public function __construct(
-        private readonly KafkaContextFactory $kafka,
-        private readonly AvroEventSerializer $avro,
+        private readonly ConsumerFactory $consumers,
+        private readonly ConsumerRunner $runner,
+        private readonly AvroEnvelopeSerializer $avro,
     ) {
         parent::__construct();
     }
@@ -41,15 +45,10 @@ final class EventDispatchCommand extends Command
         $topic = (string) $input->getArgument('topic');
         $max = (int) $input->getOption('max');
         $timeoutMs = (int) $input->getOption('timeout');
-        $group = null !== $input->getOption('group')
-            ? (string) $input->getOption('group')
-            : sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
+        $named = null !== $input->getOption('group');
+        $group = $named ? (string) $input->getOption('group') : sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
 
         $output->writeln(sprintf('<comment>dispatching %s · group=%s — routing by event_type</comment>', $topic, $group));
-
-        $context = $this->kafka->forConsumer($group);
-        $consumer = $context->createConsumer($context->createTopic($topic));
-        $consumer->setCommitAsync(false);
 
         /** @var array<string, int> $tally */
         $tally = [
@@ -59,23 +58,19 @@ final class EventDispatchCommand extends Command
             'other' => 0,
             'skipped' => 0,
         ];
-        $received = 0;
 
-        while (0 === $max || $received < $max) {
-            $message = $consumer->receive($timeoutMs);
-            if (null === $message) {
-                break;
-            }
-            ++$received;
-
+        $handler = function (\RdKafka\Message $message) use ($output, &$tally): void {
             // A consumer of a shared topic must tolerate bytes it cannot decode
             // (non-AVRO history, a schema it lacks). Skip, don't crash.
             try {
-                $event = $this->avro->decode($message->getBody());
+                $event = $this->avro->decode($message->payload);
             } catch (\Throwable) {
+                $event = null;
+            }
+            if (null === $event) {
                 ++$tally['skipped'];
-                $consumer->acknowledge($message);
-                continue;
+
+                return;
             }
 
             $metadata = $event['metadata'] ?? [];
@@ -89,11 +84,15 @@ final class EventDispatchCommand extends Command
                 $this->isType($eventType, WorkshopEvent::OrderCancelled) => $this->onCancelled($output, $orderId, $event, $tally),
                 default => $this->onUnhandled($output, $eventType, $tally),
             };
+        };
 
-            $consumer->acknowledge($message);
-        }
-
-        $context->close();
+        $this->runner->run(
+            $this->consumers->create($named ? 'consumer.at-least-once' : 'consumer.ephemeral', $group),
+            [$topic],
+            $handler,
+            new RunLimits(maxMessages: $max, pollTimeoutMs: $timeoutMs, stopOnIdle: true),
+            CommitPolicy::AfterEachMessage,
+        );
 
         $output->writeln('');
         $output->writeln(sprintf(

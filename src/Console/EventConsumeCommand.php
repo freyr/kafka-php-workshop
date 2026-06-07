@@ -10,8 +10,11 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Workshop\Kernel\AvroEventSerializer;
-use Workshop\Kernel\KafkaContextFactory;
+use Workshop\Kafka\Client\ConsumerFactory;
+use Workshop\Kafka\Runtime\CommitPolicy;
+use Workshop\Kafka\Runtime\ConsumerRunner;
+use Workshop\Kafka\Runtime\RunLimits;
+use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 
 #[AsCommand(
     name: 'events:consume',
@@ -20,8 +23,9 @@ use Workshop\Kernel\KafkaContextFactory;
 final class EventConsumeCommand extends Command
 {
     public function __construct(
-        private readonly KafkaContextFactory $kafka,
-        private readonly AvroEventSerializer $avro,
+        private readonly ConsumerFactory $consumers,
+        private readonly ConsumerRunner $runner,
+        private readonly AvroEnvelopeSerializer $avro,
     ) {
         parent::__construct();
     }
@@ -40,36 +44,36 @@ final class EventConsumeCommand extends Command
         $topic = (string) $input->getArgument('topic');
         $max = (int) $input->getOption('max');
         $timeoutMs = (int) $input->getOption('timeout');
-        $group = null !== $input->getOption('group')
-            ? (string) $input->getOption('group')
-            : sprintf('ephemeral-%s-%d', $topic, getmypid());
+        $named = null !== $input->getOption('group');
+        $group = $named ? (string) $input->getOption('group') : sprintf('ephemeral-%s-%d', $topic, getmypid());
 
-        $context = $this->kafka->forConsumer($group);
-        $consumer = $context->createConsumer($context->createTopic($topic));
-        $consumer->setCommitAsync(false);
+        $consumer = $this->consumers->create($named ? 'consumer.at-least-once' : 'consumer.ephemeral', $group);
 
-        $received = 0;
-        while (0 === $max || $received < $max) {
-            $message = $consumer->receive($timeoutMs);
-            if (null === $message) {
-                break;
+        $handler = function (\RdKafka\Message $message) use ($output): void {
+            $output->writeln(sprintf('── partition=%d offset=%d key=%s', $message->partition, $message->offset, $message->key ?? '<null>'));
+
+            $event = $this->avro->decode($message->payload);
+            if (null === $event) {
+                $output->writeln('  (non-AVRO bytes, skipped)');
+
+                return;
             }
 
-            $event = $this->avro->decode($message->getBody());
-            $kafkaMessage = $message->getKafkaMessage();
             $metadata = $event['metadata'] ?? [];
             $payload = $event;
             unset($payload['metadata']);
 
-            $output->writeln(sprintf('── partition=%d offset=%d key=%s', $kafkaMessage->partition, $kafkaMessage->offset, $message->getKey() ?? '<null>'));
             $output->writeln('metadata ' . $this->pretty($metadata));
             $output->writeln('payload  ' . $this->pretty($payload));
+        };
 
-            $consumer->acknowledge($message);
-            ++$received;
-        }
-
-        $context->close();
+        $this->runner->run(
+            $consumer,
+            [$topic],
+            $handler,
+            new RunLimits(maxMessages: $max, pollTimeoutMs: $timeoutMs, stopOnIdle: true),
+            CommitPolicy::AfterEachMessage,
+        );
 
         return Command::SUCCESS;
     }

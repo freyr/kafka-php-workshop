@@ -10,9 +10,10 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Workshop\Kernel\AvroEventSerializer;
+use Workshop\Kafka\Client\ProducerFactory;
+use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
+use Workshop\Kafka\Serde\AvroPayload;
 use Workshop\Kernel\EventFactory;
-use Workshop\Kernel\KafkaContextFactory;
 use Workshop\Kernel\WorkshopEvent;
 
 #[AsCommand(
@@ -22,9 +23,9 @@ use Workshop\Kernel\WorkshopEvent;
 final class EventProduceCommand extends Command
 {
     public function __construct(
-        private readonly KafkaContextFactory $kafka,
+        private readonly ProducerFactory $producers,
         private readonly EventFactory $events,
-        private readonly AvroEventSerializer $avro,
+        private readonly AvroEnvelopeSerializer $avro,
     ) {
         parent::__construct();
     }
@@ -60,13 +61,12 @@ final class EventProduceCommand extends Command
         /** @var array<string, string> $opts */
         $record = $this->events->build($type, $opts);
         $metadata = $record['metadata'];
-        $binary = $this->avro->encode($type->subject(), $type->schemaJson(), $record);
 
-        $context = $this->kafka->forProducer();
-        $message = $context->createMessage($binary);
-        $message->setKey((string) $metadata['aggregate_id']);
-        $context->createProducer()->send($context->createTopic($type->topic()), $message);
-        $context->close();
+        $payload = new AvroPayload($type->subject(), $type->schemaJson(), $record);
+
+        $producer = $this->producers->create('producer.idempotent', $this->avro);
+        $producer->keyed($type->topic(), (string) $metadata['aggregate_id'], $payload);
+        $producer->close();
 
         $output->writeln("produced <info>{$type->eventType()}</info> → {$type->topic()} ({$type->subject()})");
         $output->writeln("  event_id       = {$metadata['event_id']}");
