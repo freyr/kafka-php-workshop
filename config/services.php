@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Workshop\Console\ConfigStatsCommand;
+use Workshop\Kafka\Config\BrokerProbe;
+use Workshop\Kafka\Config\ConfBuilder;
+use Workshop\Kafka\Config\TcpBrokerProbe;
 use Workshop\Kernel\AvroEventSerializer;
 use Workshop\Kernel\Database;
 use Workshop\Kernel\KafkaContextFactory;
@@ -66,4 +69,10 @@ return function (ContainerConfigurator $c): void {
     // a string — same non-autowirable case as KafkaContextFactory.
     $services->set(ConfigStatsCommand::class)
         ->arg('$brokers', '%kafka.brokers%');
+
+    // The pure-rdkafka ConfBuilder needs the broker list as a string; the broker
+    // probe interface resolves to its TCP implementation.
+    $services->set(ConfBuilder::class)
+        ->arg('$brokers', '%kafka.brokers%');
+    $services->alias(BrokerProbe::class, TcpBrokerProbe::class);
 };
