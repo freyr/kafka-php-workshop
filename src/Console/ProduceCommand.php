@@ -10,7 +10,8 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Workshop\Kernel\KafkaContextFactory;
+use Workshop\Kafka\Client\ProducerFactory;
+use Workshop\Kafka\Serde\StringSerializer;
 
 #[AsCommand(
     name: 'produce',
@@ -19,7 +20,8 @@ use Workshop\Kernel\KafkaContextFactory;
 final class ProduceCommand extends Command
 {
     public function __construct(
-        private readonly KafkaContextFactory $kafka,
+        private readonly ProducerFactory $producers,
+        private readonly StringSerializer $serializer,
     ) {
         parent::__construct();
     }
@@ -32,7 +34,8 @@ final class ProduceCommand extends Command
             ->addOption('key', 'k', InputOption::VALUE_REQUIRED, 'Comma-separated semantic keys; messages cycle through them (crc32(key) routes each key to a fixed partition). Omit for unkeyed: a random partition per message')
             ->addOption('key-cardinality', null, InputOption::VALUE_REQUIRED, 'Generate this many distinct synthetic keys (key-0..key-{N-1}) and cycle through them; shows even spread from a high-cardinality key. Mutually exclusive with --key')
             ->addOption('partition', 'p', InputOption::VALUE_REQUIRED, 'Pin every message to this partition (overrides key-based routing)')
-            ->addOption('payload', null, InputOption::VALUE_REQUIRED, 'Payload template; {n} = 1-based index, {key} = message key', 'event-{n}');
+            ->addOption('payload', null, InputOption::VALUE_REQUIRED, 'Payload template; {n} = 1-based index, {key} = message key', 'event-{n}')
+            ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Producer profile to build the client from', 'producer.simple');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -41,6 +44,7 @@ final class ProduceCommand extends Command
         $count = (int) $input->getOption('count');
         $partition = null === $input->getOption('partition') ? null : (int) $input->getOption('partition');
         $template = (string) $input->getOption('payload');
+        $profile = (string) $input->getOption('profile');
 
         $cardinality = null === $input->getOption('key-cardinality') ? null : (int) $input->getOption('key-cardinality');
         $keys = $this->parseKeys($input->getOption('key'));
@@ -59,9 +63,7 @@ final class ProduceCommand extends Command
             $keys = array_map(static fn (int $i): string => 'key-' . $i, range(0, $cardinality - 1));
         }
 
-        $context = $this->kafka->forProducer();
-        $topic = $context->createTopic($topicName);
-        $producer = $context->createProducer();
+        $producer = $this->producers->create($profile, $this->serializer);
 
         for ($i = 1; $i <= $count; ++$i) {
             $key = [] === $keys ? null : $keys[($i - 1) % count($keys)];
@@ -70,19 +72,18 @@ final class ProduceCommand extends Command
                 '{key}' => $key ?? '',
             ]);
 
-            $message = $context->createMessage($payload);
-            if (null !== $key) {
-                $message->setKey($key);
-            }
             if (null !== $partition) {
-                $message->setPartition($partition);
+                $producer->toPartition($topicName, $partition, $payload, $key);
+            } elseif (null !== $key) {
+                $producer->keyed($topicName, $key, $payload);
+            } else {
+                $producer->unkeyed($topicName, $payload);
             }
-            $producer->send($topic, $message);
 
             $output->writeln($this->describe($partition, $key, $payload));
         }
 
-        $context->close();
+        $producer->close();
 
         return Command::SUCCESS;
     }

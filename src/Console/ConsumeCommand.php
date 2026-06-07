@@ -10,7 +10,13 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Workshop\Kernel\KafkaContextFactory;
+use Workshop\Kafka\Callback\CallbackKit;
+use Workshop\Kafka\Callback\ErrorCallback;
+use Workshop\Kafka\Callback\RebalanceCallback;
+use Workshop\Kafka\Client\ConsumerFactory;
+use Workshop\Kafka\Runtime\CommitPolicy;
+use Workshop\Kafka\Runtime\ConsumerRunner;
+use Workshop\Kafka\Runtime\RunLimits;
 
 #[AsCommand(
     name: 'consume',
@@ -19,7 +25,8 @@ use Workshop\Kernel\KafkaContextFactory;
 final class ConsumeCommand extends Command
 {
     public function __construct(
-        private readonly KafkaContextFactory $kafka,
+        private readonly ConsumerFactory $consumers,
+        private readonly ConsumerRunner $runner,
     ) {
         parent::__construct();
     }
@@ -40,39 +47,51 @@ final class ConsumeCommand extends Command
         $max = (int) $input->getOption('max');
         $timeoutMs = (int) $input->getOption('timeout');
         $commit = ! (bool) $input->getOption('no-commit');
+        $named = null !== $input->getOption('group');
         $group = $this->resolveGroup($input->getOption('group'), $topicName);
 
         $output->writeln(sprintf('<comment>group=%s commit=%s</comment>', $group, $commit ? 'yes' : 'no'));
 
-        $context = $this->kafka->forConsumer($group);
-        $consumer = $context->createConsumer($context->createTopic($topicName));
-        $consumer->setCommitAsync(false);
+        // A named group is a real, reusable consumer (static membership + commit);
+        // an omitted group is a throwaway that always replays from earliest.
+        $profile = $named ? 'consumer.at-least-once' : 'consumer.ephemeral';
+        $policy = $commit ? CommitPolicy::AfterEachMessage : CommitPolicy::None;
 
-        $received = 0;
-        while (0 === $max || $received < $max) {
-            $message = $consumer->receive($timeoutMs);
-            if (null === $message) {
-                break;
-            }
+        $narrate = $output->isVerbose()
+            ? static fn (string $line): mixed => $output->writeln('  <comment>' . $line . '</comment>')
+            : null;
 
-            $kafkaMessage = $message->getKafkaMessage();
+        $consumer = $this->consumers->create($profile, $group, $this->callbacks($narrate));
+
+        $handler = static function (\RdKafka\Message $message) use ($output): void {
             $output->writeln(sprintf(
                 'partition=%d offset=%d key=%s value=%s',
-                $kafkaMessage->partition,
-                $kafkaMessage->offset,
-                $message->getKey() ?? '<null>',
-                $message->getBody(),
+                $message->partition,
+                $message->offset,
+                $message->key ?? '<null>',
+                $message->payload,
             ));
+        };
 
-            if ($commit) {
-                $consumer->acknowledge($message);
-            }
-            ++$received;
-        }
-
-        $context->close();
+        $this->runner->run(
+            $consumer,
+            [$topicName],
+            $handler,
+            new RunLimits(maxMessages: $max, pollTimeoutMs: $timeoutMs, stopOnIdle: true),
+            $policy,
+            $narrate,
+        );
 
         return Command::SUCCESS;
+    }
+
+    private function callbacks(?\Closure $narrate): ?CallbackKit
+    {
+        if (null === $narrate) {
+            return null; // factory default kit (silent rebalance + error)
+        }
+
+        return new CallbackKit(new RebalanceCallback($narrate), new ErrorCallback($narrate));
     }
 
     /**
