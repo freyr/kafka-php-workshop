@@ -5,3 +5,4 @@ var/
 .phpunit.cache/
 .php-cs-fixer.cache
 .env.local
+.claude/worktrees/
