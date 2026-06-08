@@ -41,7 +41,13 @@
         "test": "phpunit",
         "ecs": "ecs check",
         "ecs-fix": "ecs check --fix",
-        "phpstan": "phpstan analyse --memory-limit=512M"
+        "phpstan": "phpstan analyse --memory-limit=512M",
+        "demo:rebalance:consumer": "php bin/console kafka:consume enet.ecommerce.orders -g rebalance-demo --commit=per-message --from=committed --interval 300 -v",
+        "demo:rebalance:producer": "php bin/console kafka:produce:sample --message-name order.created --interval 200"
+    },
+    "scripts-descriptions": {
+        "demo:rebalance:consumer": "Join the shared 'rebalance-demo' group on enet.ecommerce.orders and tail forever with verbose ⇄ assign/revoke output. Run in several terminals to watch cooperative-sticky rebalancing as members join/leave.",
+        "demo:rebalance:producer": "Stream order.created events to enet.ecommerce.orders so the rebalance-demo consumers have data flowing across all 6 partitions."
     },
     "config": {
         "sort-packages": true,
