@@ -6,7 +6,7 @@ namespace Workshop\Kafka\Config;
 
 /**
  * The workshop's recommended production producer/consumer configuration, as a
- * single source of truth. `config:show` renders these tables; `config:stats`
+ * single source of truth. `kafka:config:show` renders these tables; `kafka:config:stats`
  * feeds the consumer values straight into a raw RdKafka\Conf, and ProfileRegistry
  * composes these settings into the named client profiles.
  *

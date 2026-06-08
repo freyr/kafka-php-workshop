@@ -16,8 +16,8 @@ use Workshop\Kafka\Serde\MessageSerializer;
 use Workshop\Produce\MessageCatalog;
 
 #[AsCommand(
-    name: 'produce',
-    description: 'Stream AVRO events to their routed topics. Each message is picked at random from the catalog (pin one with --message-name) and keyed by an order id drawn from a small reusable pool. With --count it sends that many and stops; without it, it streams until Ctrl+C.',
+    name: 'kafka:produce:sample',
+    description: 'Stream messages to their routed topics.',
 )]
 final class ProduceCommand extends Command
 {
@@ -32,10 +32,10 @@ final class ProduceCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'How many messages to produce, then stop. Omit to stream indefinitely until interrupted (Ctrl+C / SIGTERM).')
+            ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'How many messages to produce, then stop. Omit to stream until interrupted (Ctrl+C / SIGTERM).')
             ->addOption('message-name', null, InputOption::VALUE_REQUIRED, 'Produce only this message (e.g. order.created); omit to pick a random message per send')
-            ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool keys are drawn from; a smaller pool puts more event types on the same order (same key → same partition, ordered)', '8')
-            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between sends; useful for watching a consumer keep up with an indefinite stream', '0');
+            ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool keys are drawn from; default: 8', '8')
+            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between sends; default: 10', '10');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -101,7 +101,7 @@ final class ProduceCommand extends Command
         } catch (SchemaRegistryException) {
             $output->writeln('<error>No schema registered for this event.</error>');
             $output->writeln('Schemas are not auto-registered — register them first, then produce again:');
-            $output->writeln('  <comment>bin/console schema:register --all</comment>');
+            $output->writeln('  <comment>bin/console kafka:schema:register --all</comment>');
 
             return Command::FAILURE;
         } finally {

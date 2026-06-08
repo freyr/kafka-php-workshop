@@ -10,7 +10,7 @@ namespace Workshop\Kafka\Runtime;
  *
  *  - Block 1 `consume` (read until idle): stopOnIdle = true — end at the first
  *    empty poll, like the enqueue receive-timeout behavior.
- *  - Block 8 `config:stats` (run for a while): stopOnIdle = false, maxRuntimeSeconds
+ *  - Block 8 `kafka:config:stats` (run for a while): stopOnIdle = false, maxRuntimeSeconds
  *    set — keep polling so lag can build and drain.
  */
 final readonly class RunLimits

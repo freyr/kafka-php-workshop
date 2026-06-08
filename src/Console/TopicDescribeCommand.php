@@ -12,8 +12,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kafka\Client\AdminFactory;
 
 #[AsCommand(
-    name: 'topic:describe',
-    description: 'Block 2: show a topic\'s partition count via the raw \\RdKafka metadata API (read-only; create/delete live in the bin/ shell scripts).',
+    name: 'kafka:topic:describe',
+    description: 'Describe cluster topic.',
 )]
 final class TopicDescribeCommand extends Command
 {

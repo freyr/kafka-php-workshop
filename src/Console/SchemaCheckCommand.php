@@ -13,7 +13,7 @@ use Workshop\Kafka\Serde\SchemaRegistryClient;
 use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
-    name: 'schema:check',
+    name: 'kafka:schema:check',
     description: 'Check whether a candidate .avsc is compatible with the latest registered version of an event subject — the pre-registration CI gate.',
 )]
 final class SchemaCheckCommand extends Command
@@ -62,14 +62,14 @@ final class SchemaCheckCommand extends Command
 
         if ($result['firstVersion']) {
             $output->writeln('  <comment>no version registered yet</comment> — first schema is always accepted, nothing to check.');
-            $output->writeln('  Register it: <comment>bin/console schema:register ' . $type . '</comment>');
+            $output->writeln('  Register it: <comment>bin/console kafka:schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }
 
         if ($result['compatible']) {
             $output->writeln('  <info>✓ COMPATIBLE</info> with the latest registered version — safe to register.');
-            $output->writeln('  Register it: <comment>bin/console schema:register ' . $type . '</comment>');
+            $output->writeln('  Register it: <comment>bin/console kafka:schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }

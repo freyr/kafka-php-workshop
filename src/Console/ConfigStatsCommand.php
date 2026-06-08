@@ -13,8 +13,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kafka\Config\KafkaTuning;
 
 #[AsCommand(
-    name: 'config:stats',
-    description: 'Block 8 deep dive: a RAW php-rdkafka consumer that reads consumer lag, broker RTT, and fetch-queue depth from the librdkafka statistics callback — the no-JMX monitoring path PHP cannot get through enqueue. Cooperative-sticky rebalancing + graceful raw shutdown.',
+    name: 'kafka:config:stats',
+    description: 'RAW php-rdkafka consumer that reads consumer lag, broker RTT, and fetch-queue depth from the librdkafka statistics callback.',
 )]
 final class ConfigStatsCommand extends Command
 {

@@ -13,8 +13,8 @@ use Workshop\Kafka\Serde\SchemaRegistryClient;
 use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
-    name: 'schema:versions',
-    description: 'List the registered schema versions for an event subject (shows the evolution lineage [1, 2, 3, …]).',
+    name: 'kafka:schema:versions',
+    description: 'List the registered schema versions for an event subject.',
 )]
 final class SchemaVersionsCommand extends Command
 {
@@ -44,7 +44,7 @@ final class SchemaVersionsCommand extends Command
 
         if ([] === $versions) {
             $output->writeln("subject <info>{$subject}</info>: <comment>not registered yet</comment>");
-            $output->writeln('Register it: <comment>bin/console schema:register ' . $type . '</comment>');
+            $output->writeln('Register it: <comment>bin/console kafka:schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }

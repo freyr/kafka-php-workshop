@@ -9,7 +9,7 @@ use RdKafka\Conf;
 /**
  * librdkafka emits a JSON statistics blob every statistics.interval.ms, and this
  * callback is the only window a PHP client has into client-internal numbers (PHP
- * has no JMX). Blocks 1-3 do not use it; it exists so Block 8's config:stats can
+ * has no JMX). Blocks 1-3 do not use it; it exists so Block 8's kafka:config:stats can
  * consume the kit rather than owning the wiring. The decoded array is handed to an
  * injected consumer.
  */

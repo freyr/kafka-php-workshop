@@ -15,8 +15,8 @@ use Workshop\Kafka\Serde\SchemaRegistryClient;
 use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
-    name: 'schema:register',
-    description: 'Register an event subject\'s AVRO schema with the Schema Registry — the explicit, out-of-band production path. The registry enforces compatibility and assigns the schema id producers embed in the wire format. Use --all to register every routed subject in one shot.',
+    name: 'kafka:schema:register',
+    description: 'Register Message subject\'s AVRO schema with the Schema Registry. Use --all to register every routed subject in one shot.',
 )]
 final class SchemaRegisterCommand extends Command
 {

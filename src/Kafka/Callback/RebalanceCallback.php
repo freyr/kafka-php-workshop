@@ -12,7 +12,7 @@ use RdKafka\TopicPartition;
  * Cooperative-sticky rebalancing. Instead of the eager assign()/assign(null)
  * dance, only the partitions that actually move are revoked or assigned
  * incrementally, so a rebalance no longer stops every consumer in the group.
- * Lifted from the Block 8 config:stats command so every consumer profile gets it.
+ * Lifted from the Block 8 kafka:config:stats command so every consumer profile gets it.
  */
 final readonly class RebalanceCallback implements ConfCallback
 {

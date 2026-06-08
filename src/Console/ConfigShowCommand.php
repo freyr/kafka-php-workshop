@@ -15,8 +15,8 @@ use Workshop\Kafka\Config\KafkaSetting;
 use Workshop\Kafka\Config\KafkaTuning;
 
 #[AsCommand(
-    name: 'config:show',
-    description: 'Block 8: print the workshop\'s recommended producer/consumer librdkafka config — value, default, and why — so every non-default value can be defended. No broker contact.',
+    name: 'kafka:config:show',
+    description: 'Print producer/consumer librdkafka config — value, default, and why — so every non-default value can be defended. No broker contact.',
 )]
 final class ConfigShowCommand extends Command
 {

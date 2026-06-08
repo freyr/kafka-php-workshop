@@ -11,8 +11,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kafka\Client\AdminFactory;
 
 #[AsCommand(
-    name: 'topic:list',
-    description: 'Block 2: list the cluster topics via the raw \\RdKafka metadata API. php-rdkafka can read metadata but cannot create/delete topics — provisioning stays in the bin/ shell scripts.',
+    name: 'kafka:topic:list',
+    description: 'List the cluster topics.',
 )]
 final class TopicListCommand extends Command
 {

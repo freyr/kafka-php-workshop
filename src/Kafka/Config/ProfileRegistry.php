@@ -7,7 +7,7 @@ namespace Workshop\Kafka\Config;
 /**
  * The catalog of named client profiles the workshop ships. Each profile is built
  * by selecting groups out of KafkaTuning's single source of truth, so the values
- * a profile applies are exactly the values config:show can defend.
+ * a profile applies are exactly the values kafka:config:show can defend.
  *
  * This is the multi-client seam: a command picks a profile by name and the
  * factory builds the matching client. Later blocks extend the workshop by adding

@@ -19,7 +19,7 @@ use Workshop\Produce\MessageRouting;
  * takes a Message and does the AVRO framing itself: it resolves the message's wire
  * name, looks up the route (subject + schema), and encodes the enveloped record.
  * Schemas are NOT auto-registered: the registry stays a strict gate, so a subject
- * must be registered out of band (bin/console schema:register) before its messages
+ * must be registered out of band (bin/console kafka:schema:register) before its messages
  * can be produced — encode throws a SchemaRegistryException otherwise. decode()
  * returns the structured envelope, or null when the bytes are not Confluent-framed
  * so a dispatcher can skip non-AVRO records instead of crashing.
