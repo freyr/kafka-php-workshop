@@ -6,8 +6,8 @@ namespace Workshop\Tests\Kafka\Serde;
 
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
+use Workshop\Kafka\Serde\AvroEventSerializer;
 use Workshop\Kafka\Serde\AvroPayload;
-use Workshop\Kernel\AvroEventSerializer;
 
 final class AvroEnvelopeSerializerTest extends TestCase
 {

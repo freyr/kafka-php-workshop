@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kernel;
+namespace Workshop\Kafka\Config;
 
 enum Topics: string
 {

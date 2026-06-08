@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kernel;
+namespace Workshop\Kafka\Config;
 
 final class BrokerUnreachableException extends \RuntimeException
 {

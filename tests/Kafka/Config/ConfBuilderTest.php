@@ -6,11 +6,11 @@ namespace Workshop\Tests\Kafka\Config;
 
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Config\BrokerProbe;
+use Workshop\Kafka\Config\BrokerUnreachableException;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
 use Workshop\Kafka\Config\TcpBrokerProbe;
-use Workshop\Kernel\BrokerUnreachableException;
 
 final class ConfBuilderTest extends TestCase
 {

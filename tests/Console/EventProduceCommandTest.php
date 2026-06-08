@@ -14,7 +14,7 @@ use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
 use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
-use Workshop\Kernel\AvroEventSerializer;
+use Workshop\Kafka\Serde\AvroEventSerializer;
 use Workshop\Produce\MessageRouting;
 
 /**

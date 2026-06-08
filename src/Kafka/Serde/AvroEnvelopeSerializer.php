@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Serde;
 
-use Workshop\Kernel\AvroEventSerializer;
-
 /**
- * Block 3 serializer: wraps the standalone Kernel\AvroEventSerializer behind the
+ * Block 3 serializer: wraps the standalone AvroEventSerializer behind the
  * MessageSerializer seam. encode() takes an AvroPayload (subject + schema +
  * enveloped record) and returns Confluent wire-format bytes; decode() returns the
  * structured envelope, or null when the bytes are not Confluent-framed so a

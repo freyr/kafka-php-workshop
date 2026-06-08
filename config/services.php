@@ -8,8 +8,8 @@ use Workshop\Console\ConfigStatsCommand;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\TcpBrokerProbe;
-use Workshop\Kernel\AvroEventSerializer;
-use Workshop\Kernel\SchemaRegistryClient;
+use Workshop\Kafka\Serde\AvroEventSerializer;
+use Workshop\Kafka\Serde\SchemaRegistryClient;
 
 return function (ContainerConfigurator $c): void {
     $services = $c->services()
@@ -26,10 +26,6 @@ return function (ContainerConfigurator $c): void {
     // PSR-4 autodiscovery — every class under these namespaces becomes a service.
     // Autowire resolves constructor dependencies by type.
     // Enums are value objects, not services — exclude them from autodiscovery.
-    $services->load('Workshop\\Kernel\\', __DIR__ . '/../src/Kernel/')
-        ->exclude([
-            __DIR__ . '/../src/Kernel/Topics.php',
-        ]);
 
     // The pure php-rdkafka layer (Blocks 1-3). Concept-named sub-namespaces under
     // src/Kafka/ become autowired services; the value objects and enums are
@@ -39,6 +35,7 @@ return function (ContainerConfigurator $c): void {
             __DIR__ . '/../src/Kafka/Config/ClientRole.php',
             __DIR__ . '/../src/Kafka/Config/KafkaSetting.php',
             __DIR__ . '/../src/Kafka/Config/KafkaProfile.php',
+            __DIR__ . '/../src/Kafka/Config/Topics.php',
             // Callbacks are constructed per-call by the factories (with a narrator),
             // never injected — exclude the whole directory like the value objects.
             __DIR__ . '/../src/Kafka/Callback',
