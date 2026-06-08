@@ -34,6 +34,11 @@ use Workshop\Kafka\Runtime\RunLimits;
 )]
 final class ConsumeCommand extends Command
 {
+    /**
+     * Poll interval (ms) when no --timeout is given; bounds how fast a tailing run reacts to Ctrl-C.
+     */
+    private const int TAIL_POLL_MS = 1000;
+
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
@@ -50,12 +55,12 @@ final class ConsumeCommand extends Command
         $this
             ->addArgument('topic', InputArgument::REQUIRED, 'Topic to consume (e.g. enet.ecommerce.orders)')
             ->addOption('group', 'g', InputOption::VALUE_REQUIRED, 'Consumer group id; omit for an ephemeral group that starts from earliest')
-            ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end', OffsetReset::Committed->value)
-            ->addOption('commit', null, InputOption::VALUE_REQUIRED, 'Mode: per-message | auto | idempotent | readonly (separate group, never commits, prints name/id only)', ConsumeStrategy::PerMessage->value)
+            ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end', OffsetReset::Beginning->value)
+            ->addOption('commit', null, InputOption::VALUE_REQUIRED, 'Mode: per-message | auto | idempotent | readonly (separate group, never commits, prints name/id only)', ConsumeStrategy::ReadOnly->value)
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
             ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --commit=auto); default 5000', '5000')
-            ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = read until the receive timeout)', '0')
-            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run', '5000')
+            ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
+            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run. Omit to tail continuously — stop only on --max or Ctrl-C')
             ->addOption('static-membership', null, InputOption::VALUE_NONE, 'Add a group.instance.id so a restart rejoins without a full rebalance; off by default — leave off for short CLI runs');
     }
 
@@ -72,11 +77,17 @@ final class ConsumeCommand extends Command
 
         $topic = Input::string($input, 'topic');
         $max = Input::int($input, 'max');
-        $timeoutMs = Input::int($input, 'timeout');
+        $timeoutMs = Input::intOrNull($input, 'timeout');
         $pauseMs = Input::int($input, 'interval');
         $autoCommitMs = Input::int($input, 'auto-commit-interval');
         $groupOption = Input::stringOrNull($input, 'group');
         $staticMembership = (bool) $input->getOption('static-membership');
+
+        // No --timeout → tail the topic continuously: keep polling forever and stop
+        // only on --max or a signal. An explicit --timeout restores the read-until-idle
+        // behavior, ending at the first empty poll within that window.
+        $stopOnIdle = null !== $timeoutMs;
+        $pollTimeoutMs = $timeoutMs ?? self::TAIL_POLL_MS;
 
         // Each lane maps to a named profile rather than a runtime tweak, so the config
         // it applies is visible in kafka:config:show:
@@ -93,12 +104,13 @@ final class ConsumeCommand extends Command
         };
 
         $output->writeln(sprintf(
-            '<comment>topic=%s group=%s profile=%s from=%s commit=%s</comment>',
+            '<comment>topic=%s group=%s profile=%s from=%s commit=%s timeout=%s</comment>',
             $topic,
             $group,
             $profile,
             $offsetReset->value,
             $strategy->value,
+            $stopOnIdle ? $timeoutMs . 'ms (stop on idle)' : '∞ (tail)',
         ));
 
         $narrate = $output->isVerbose()
@@ -127,7 +139,7 @@ final class ConsumeCommand extends Command
             $consumer,
             [$topic],
             $messageHandler,
-            new RunLimits(maxMessages: $max, pollTimeoutMs: $timeoutMs, stopOnIdle: true),
+            new RunLimits(maxMessages: $max, pollTimeoutMs: $pollTimeoutMs, stopOnIdle: $stopOnIdle),
             $strategy->commitPolicy(),
             $narrate,
             $pauseMs,
