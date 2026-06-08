@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Client;
 
+use RdKafka\KafkaConsumer;
 use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
@@ -26,7 +27,7 @@ final readonly class ConsumerFactory
     ) {
     }
 
-    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null): \RdKafka\KafkaConsumer
+    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null): KafkaConsumer
     {
         $profile = $profile instanceof KafkaProfile ? $profile : $this->profiles->get($profile);
 
@@ -35,6 +36,6 @@ final readonly class ConsumerFactory
         ]);
         ($callbacks ?? new CallbackKit(new RebalanceCallback(), new ErrorCallback()))->attachTo($conf);
 
-        return new \RdKafka\KafkaConsumer($conf);
+        return new KafkaConsumer($conf);
     }
 }

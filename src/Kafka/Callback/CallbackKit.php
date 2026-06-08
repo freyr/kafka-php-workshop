@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Callback;
 
+use RdKafka\Conf;
+
 /**
  * Composes a chosen set of ConfCallbacks and attaches them to a \RdKafka\Conf in
  * one call. Factories assemble the right kit per role (a consumer gets rebalance +
@@ -22,7 +24,7 @@ final readonly class CallbackKit
         $this->callbacks = array_values($callbacks);
     }
 
-    public function attachTo(\RdKafka\Conf $conf): void
+    public function attachTo(Conf $conf): void
     {
         foreach ($this->callbacks as $callback) {
             $callback->attachTo($conf);

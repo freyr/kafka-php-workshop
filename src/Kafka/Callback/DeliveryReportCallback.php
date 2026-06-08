@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Callback;
 
+use RdKafka\Conf;
+use RdKafka\Message;
+
 /**
  * The producer side of the callback set: librdkafka invokes the delivery-report
  * callback once per message after the broker acks (or fails) it. With an
@@ -19,9 +22,9 @@ final readonly class DeliveryReportCallback implements ConfCallback
     ) {
     }
 
-    public function attachTo(\RdKafka\Conf $conf): void
+    public function attachTo(Conf $conf): void
     {
-        $conf->setDrMsgCb(function ($producer, \RdKafka\Message $message): void {
+        $conf->setDrMsgCb(function ($producer, Message $message): void {
             if (RD_KAFKA_RESP_ERR_NO_ERROR !== $message->err) {
                 $this->narrate(sprintf('✗ delivery failed: %s', $message->errstr()));
 

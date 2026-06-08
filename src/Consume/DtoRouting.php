@@ -9,13 +9,13 @@ namespace Workshop\Consume;
  * produce-side routing: consumers own their read models, so this table lists only
  * the names this service consumes. Unknown names return null (ignored).
  */
-final class DtoRouting
+final readonly class DtoRouting
 {
     /**
      * @param array<string, class-string> $map
      */
     public function __construct(
-        private readonly array $map,
+        private array $map,
     ) {
     }
 

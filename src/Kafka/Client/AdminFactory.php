@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Client;
 
+use RdKafka\Producer;
 use Workshop\Kafka\Admin\TopicAdmin;
 use Workshop\Kafka\Config\ClientRole;
 use Workshop\Kafka\Config\ConfBuilder;
@@ -25,6 +26,6 @@ final readonly class AdminFactory
     {
         $conf = $this->confBuilder->build(new KafkaProfile('admin', ClientRole::Admin, []));
 
-        return new TopicAdmin(new \RdKafka\Producer($conf));
+        return new TopicAdmin(new Producer($conf));
     }
 }

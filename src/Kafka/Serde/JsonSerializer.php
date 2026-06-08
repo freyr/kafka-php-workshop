@@ -20,9 +20,9 @@ use Symfony\Component\Serializer\Serializer;
  * It mirrors the consume-side MessageDenormalizer's serializer setup so both
  * directions agree on the wire field names.
  */
-final class JsonSerializer implements MessageSerializer
+final readonly class JsonSerializer implements MessageSerializer
 {
-    private readonly Serializer $serializer;
+    private Serializer $serializer;
 
     public function __construct()
     {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Callback;
 
+use RdKafka\Conf;
+
 /**
  * One librdkafka callback that knows how to attach itself to a \RdKafka\Conf. The
  * interesting part of a raw client is not its string properties but its callbacks
@@ -12,5 +14,5 @@ namespace Workshop\Kafka\Callback;
  */
 interface ConfCallback
 {
-    public function attachTo(\RdKafka\Conf $conf): void;
+    public function attachTo(Conf $conf): void;
 }

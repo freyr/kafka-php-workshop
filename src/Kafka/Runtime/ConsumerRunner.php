@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Runtime;
 
+use RdKafka\Exception;
+use RdKafka\KafkaConsumer;
+use RdKafka\Message;
+
 /**
  * Owns the consume loop so a command supplies only a per-message handler. It hides
  * the boilerplate every consumer block would otherwise re-derive: the
@@ -18,14 +22,16 @@ namespace Workshop\Kafka\Runtime;
 final readonly class ConsumerRunner
 {
     /**
-     * @param list<string>                     $topics
-     * @param callable(\RdKafka\Message): void $handler
-     * @param (\Closure(string): void)|null    $narrate
+     * @param list<string>                  $topics
+     * @param callable(Message): void       $handler
+     * @param (\Closure(string): void)|null $narrate
      *
      * @return int the number of messages processed
+     *
+     * @throws Exception
      */
     public function run(
-        \RdKafka\KafkaConsumer $consumer,
+        KafkaConsumer $consumer,
         array $topics,
         callable $handler,
         RunLimits $limits,

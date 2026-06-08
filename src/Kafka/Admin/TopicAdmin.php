@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Admin;
 
+use RdKafka\Metadata;
+use RdKafka\Producer;
+
 /**
  * Read-only topic inspection over the raw \RdKafka metadata API.
  *
@@ -18,7 +21,7 @@ namespace Workshop\Kafka\Admin;
 final readonly class TopicAdmin
 {
     public function __construct(
-        private \RdKafka\Producer $client,
+        private Producer $client,
         private int $timeoutMs = 10000,
     ) {
     }
@@ -79,7 +82,7 @@ final readonly class TopicAdmin
         throw new \RuntimeException(sprintf('Topic "%s" does not exist.', $name));
     }
 
-    private function metadata(): \RdKafka\Metadata
+    private function metadata(): Metadata
     {
         // all_topics = true so a missing topic is simply absent from the list
         // rather than triggering auto-create or an error.

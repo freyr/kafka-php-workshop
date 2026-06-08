@@ -16,9 +16,9 @@ use Symfony\Component\Serializer\Serializer;
  * and hydrates nested typed properties via the ReflectionExtractor — so a DTO can
  * declare only the fields it cares about and the rest of the payload is ignored.
  */
-final class MessageDenormalizer
+final readonly class MessageDenormalizer
 {
-    private readonly Serializer $serializer;
+    private Serializer $serializer;
 
     public function __construct()
     {

@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Callback;
 
+use RdKafka\Conf;
+use RdKafka\KafkaConsumer;
+use RdKafka\TopicPartition;
+
 /**
  * Cooperative-sticky rebalancing. Instead of the eager assign()/assign(null)
  * dance, only the partitions that actually move are revoked or assigned
@@ -19,11 +23,11 @@ final readonly class RebalanceCallback implements ConfCallback
     ) {
     }
 
-    public function attachTo(\RdKafka\Conf $conf): void
+    public function attachTo(Conf $conf): void
     {
         $conf->setRebalanceCb(
-            /** @param array<int, \RdKafka\TopicPartition>|null $partitions */
-            function (\RdKafka\KafkaConsumer $consumer, int $err, ?array $partitions = null): void {
+            /** @param array<int, TopicPartition>|null $partitions */
+            function (KafkaConsumer $consumer, int $err, ?array $partitions = null): void {
                 switch ($err) {
                     case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
                         $this->narrate('⇄ assign ' . $this->names($partitions));
@@ -45,12 +49,12 @@ final readonly class RebalanceCallback implements ConfCallback
     }
 
     /**
-     * @param array<int, \RdKafka\TopicPartition>|null $partitions
+     * @param array<int, TopicPartition>|null $partitions
      */
     private function names(?array $partitions): string
     {
         $names = array_map(
-            static fn (\RdKafka\TopicPartition $p): string => sprintf('%s[%d]', $p->getTopic(), $p->getPartition()),
+            static fn (TopicPartition $p): string => sprintf('%s[%d]', $p->getTopic(), $p->getPartition()),
             $partitions ?? [],
         );
 

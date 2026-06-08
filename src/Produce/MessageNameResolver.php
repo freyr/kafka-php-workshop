@@ -18,6 +18,9 @@ final class MessageNameResolver
      */
     private array $cache = [];
 
+    /**
+     * @throws \ReflectionException
+     */
     public function nameOf(Message $message): string
     {
         return $this->cache[$message::class] ??= self::reflect($message::class);
@@ -25,10 +28,12 @@ final class MessageNameResolver
 
     /**
      * @param class-string $class
+     *
+     * @throws \ReflectionException
      */
     private static function reflect(string $class): string
     {
-        $attributes = (new \ReflectionClass($class))->getAttributes(MessageName::class);
+        $attributes = new \ReflectionClass($class)->getAttributes(MessageName::class);
         if ([] === $attributes) {
             throw new \LogicException(sprintf('%s is missing the #[MessageName] attribute.', $class));
         }

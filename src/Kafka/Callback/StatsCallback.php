@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Callback;
 
+use RdKafka\Conf;
+
 /**
  * librdkafka emits a JSON statistics blob every statistics.interval.ms, and this
  * callback is the only window a PHP client has into client-internal numbers (PHP
@@ -21,7 +23,7 @@ final readonly class StatsCallback implements ConfCallback
     ) {
     }
 
-    public function attachTo(\RdKafka\Conf $conf): void
+    public function attachTo(Conf $conf): void
     {
         $conf->setStatsCb(function ($client, string $json): void {
             if (null === $this->onStats) {

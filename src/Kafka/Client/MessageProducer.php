@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Client;
 
+use RdKafka\Producer;
+use RdKafka\ProducerTopic;
 use Workshop\Kafka\Serde\MessageSerializer;
 
 /**
@@ -24,12 +26,12 @@ use Workshop\Kafka\Serde\MessageSerializer;
 final class MessageProducer
 {
     /**
-     * @var array<string, \RdKafka\ProducerTopic>
+     * @var array<string, ProducerTopic>
      */
     private array $topics = [];
 
     public function __construct(
-        private readonly \RdKafka\Producer $producer,
+        private readonly Producer $producer,
         private readonly MessageSerializer $serializer,
         private readonly int $flushTimeoutMs = 10000,
     ) {
@@ -70,7 +72,7 @@ final class MessageProducer
         $this->producer->poll(0);
     }
 
-    private function topicFor(string $name): \RdKafka\ProducerTopic
+    private function topicFor(string $name): ProducerTopic
     {
         return $this->topics[$name] ??= $this->producer->newTopic($name);
     }

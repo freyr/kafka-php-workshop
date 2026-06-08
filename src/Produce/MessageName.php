@@ -12,10 +12,10 @@ namespace Workshop\Produce;
  * e.g. 'order-created'.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
-final class MessageName
+final readonly class MessageName
 {
     public function __construct(
-        public readonly string $value,
+        public string $value,
     ) {
     }
 }

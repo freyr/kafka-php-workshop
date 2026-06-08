@@ -9,13 +9,13 @@ namespace Workshop\Produce;
  * source of truth for produce-side routing, loaded from config/producers.yaml.
  * The per-type routing lives in data (config/producers.yaml), not in code.
  */
-final class MessageRouting
+final readonly class MessageRouting
 {
     /**
      * @param array<string, array{topic: string, subject: string, schema: string}> $routes
      */
     public function __construct(
-        private readonly array $routes,
+        private array $routes,
     ) {
     }
 

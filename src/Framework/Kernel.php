@@ -21,13 +21,16 @@ use Workshop\Framework\DependencyInjection\WorkshopExtension;
  * Everything else (autowiring, autodiscovery, routing) is expressed as data in
  * config/*.yaml rather than wiring code.
  */
-final class Kernel
+final readonly class Kernel
 {
     public function __construct(
-        private readonly string $projectDir,
+        private string $projectDir,
     ) {
     }
 
+    /**
+     * @throws \Exception
+     */
     public function boot(): ContainerBuilder
     {
         $container = new ContainerBuilder();
@@ -44,8 +47,10 @@ final class Kernel
         // YAML; the loader hands those configs to WorkshopExtension at compile time.
         $container->registerExtension(new WorkshopExtension());
 
-        (new YamlFileLoader($container, new FileLocator($this->projectDir . '/config')))
-            ->load('services.yaml');
+        new YamlFileLoader(
+            $container,
+            new FileLocator($this->projectDir . '/config')
+        )->load('services.yaml');
 
         $container->compile();
 
