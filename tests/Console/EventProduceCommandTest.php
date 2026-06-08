@@ -13,7 +13,7 @@ use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
-use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
+use Workshop\Kafka\Serde\AvroSerializer;
 use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
 
@@ -35,7 +35,8 @@ final class EventProduceCommandTest extends TestCase
             new ProfileRegistry(new KafkaTuning()),
         );
         $routing = new MessageRouting([]);
-        $avro = new AvroEnvelopeSerializer('http://registry.test');
+        // Never reached on the unknown-type branch, so skip building the registry stack.
+        $avro = (new \ReflectionClass(AvroSerializer::class))->newInstanceWithoutConstructor();
 
         $tester = new CommandTester(new EventProduceCommand($factory, $routing, $avro, new MessageNameResolver()));
         $tester->execute([

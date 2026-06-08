@@ -14,7 +14,7 @@ use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Runtime\RunLimits;
-use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
+use Workshop\Kafka\Serde\AvroSerializer;
 
 #[AsCommand(
     name: 'events:consume',
@@ -25,7 +25,7 @@ final class EventConsumeCommand extends Command
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
-        private readonly AvroEnvelopeSerializer $avro,
+        private readonly AvroSerializer $avro,
     ) {
         parent::__construct();
     }

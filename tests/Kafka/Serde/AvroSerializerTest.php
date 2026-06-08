@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace Workshop\Tests\Kafka\Serde;
 
 use PHPUnit\Framework\TestCase;
-use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kafka\Serde\AvroPayload;
+use Workshop\Kafka\Serde\AvroSerializer;
 
-final class AvroEnvelopeSerializerTest extends TestCase
+final class AvroSerializerTest extends TestCase
 {
-    private AvroEnvelopeSerializer $serializer;
+    private AvroSerializer $serializer;
 
     protected function setUp(): void
     {
         // The guard tests below never reach the wrapped RecordSerializer (non-AVRO
         // bytes short-circuit, bad payloads throw first), so instantiate without the
         // constructor — no Guzzle client, no registry, no third-party deprecation.
-        $this->serializer = (new \ReflectionClass(AvroEnvelopeSerializer::class))->newInstanceWithoutConstructor();
+        $this->serializer = (new \ReflectionClass(AvroSerializer::class))->newInstanceWithoutConstructor();
     }
 
     public function testDecodeReturnsNullForNonAvroBytes(): void

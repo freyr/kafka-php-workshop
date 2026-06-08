@@ -5,25 +5,21 @@ declare(strict_types=1);
 namespace Workshop\Kafka\Serde;
 
 use FlixTech\AvroSerializer\Objects\RecordSerializer;
-use FlixTech\SchemaRegistryApi\Registry\BlockingRegistry;
-use FlixTech\SchemaRegistryApi\Registry\Cache\AvroObjectCacheAdapter;
-use FlixTech\SchemaRegistryApi\Registry\CachedRegistry;
-use FlixTech\SchemaRegistryApi\Registry\PromisingRegistry;
-use GuzzleHttp\Client;
 
 /**
  * Block 3 serializer: the MessageSerializer seam over the Confluent AVRO wire
- * format (a 0x00 magic byte + 4-byte big-endian schema id + AVRO binary), backed
- * by a Schema Registry.
+ * format (a 0x00 magic byte + 4-byte big-endian schema id + AVRO binary).
  *
- * encode() takes an AvroPayload (subject + schema + enveloped record) and returns
- * Confluent wire-format bytes, auto-registering missing schemas/subjects on first
- * encode — the workshop trade-off; production producers usually register out of
- * band so the registry stays the gate. decode() returns the structured envelope,
- * or null when the bytes are not Confluent-framed so a dispatcher can skip
- * non-AVRO records instead of crashing.
+ * The Schema Registry plumbing — Guzzle client → registry → RecordSerializer — is
+ * assembled as data in config/services.yaml and injected ready-made, so this class
+ * is pure framing logic. encode() takes an AvroPayload (subject + schema +
+ * enveloped record) and returns wire-format bytes, auto-registering missing
+ * schemas/subjects on first encode — the workshop trade-off; production producers
+ * usually register out of band so the registry stays the gate. decode() returns
+ * the structured envelope, or null when the bytes are not Confluent-framed so a
+ * dispatcher can skip non-AVRO records instead of crashing.
  */
-final readonly class AvroEnvelopeSerializer implements MessageSerializer
+final readonly class AvroSerializer implements MessageSerializer
 {
     /**
      * Confluent wire format: a 0x00 magic byte, a 4-byte big-endian schema id,
@@ -32,21 +28,9 @@ final readonly class AvroEnvelopeSerializer implements MessageSerializer
     private const string MAGIC_BYTE = "\x00";
     private const int HEADER_BYTES = 5;
 
-    private RecordSerializer $serializer;
-
-    public function __construct(string $schemaRegistryUrl)
-    {
-        $registry = new CachedRegistry(
-            new BlockingRegistry(new PromisingRegistry(new Client([
-                'base_uri' => $schemaRegistryUrl,
-            ]))),
-            new AvroObjectCacheAdapter(),
-        );
-
-        $this->serializer = new RecordSerializer($registry, [
-            RecordSerializer::OPTION_REGISTER_MISSING_SCHEMAS => true,
-            RecordSerializer::OPTION_REGISTER_MISSING_SUBJECTS => true,
-        ]);
+    public function __construct(
+        private RecordSerializer $serializer,
+    ) {
     }
 
     public function encode(mixed $payload): string

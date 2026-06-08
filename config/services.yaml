@@ -45,11 +45,34 @@ services:
     # the Produce namespace is otherwise value objects, never services).
     Workshop\Produce\MessageNameResolver: ~
 
-    # The Schema Registry URL can't be type-hint-autowired — bind it by name.
-    Workshop\Kafka\Serde\AvroEnvelopeSerializer:
+    # The Confluent AVRO serializer stack, wired as data. AvroSerializer used to
+    # assemble this chain in its constructor; now it just receives the finished
+    # RecordSerializer (autowired by type) and stays pure framing logic.
+    GuzzleHttp\Client:
         arguments:
-            $schemaRegistryUrl: '%schema_registry.url%'
+            - { base_uri: '%schema_registry.url%' }
 
+    FlixTech\SchemaRegistryApi\Registry\PromisingRegistry:
+        arguments: ['@GuzzleHttp\Client']
+
+    FlixTech\SchemaRegistryApi\Registry\BlockingRegistry:
+        arguments: ['@FlixTech\SchemaRegistryApi\Registry\PromisingRegistry']
+
+    FlixTech\SchemaRegistryApi\Registry\Cache\AvroObjectCacheAdapter: ~
+
+    FlixTech\SchemaRegistryApi\Registry\CachedRegistry:
+        arguments:
+            - '@FlixTech\SchemaRegistryApi\Registry\BlockingRegistry'
+            - '@FlixTech\SchemaRegistryApi\Registry\Cache\AvroObjectCacheAdapter'
+
+    FlixTech\AvroSerializer\Objects\RecordSerializer:
+        arguments:
+            $registry: '@FlixTech\SchemaRegistryApi\Registry\CachedRegistry'
+            $options:
+                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SCHEMAS: true
+                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SUBJECTS: true
+
+    # The Schema Registry URL can't be type-hint-autowired — bind it by name.
     Workshop\Kafka\Serde\SchemaRegistryClient:
         arguments:
             $schemaRegistryUrl: '%schema_registry.url%'

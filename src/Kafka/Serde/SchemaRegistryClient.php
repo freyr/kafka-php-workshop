@@ -16,7 +16,7 @@ use function FlixTech\SchemaRegistryApi\Requests\checkSchemaCompatibilityAgainst
  * show the two operations that matter for schema evolution — the
  * pre-registration compatibility check (the CI gate) and listing a subject's
  * registered versions — without hand-rolling curl. Schema *encoding* still goes
- * through {@see AvroEnvelopeSerializer}; this client never touches the wire format.
+ * through {@see AvroSerializer}; this client never touches the wire format.
  */
 final readonly class SchemaRegistryClient
 {

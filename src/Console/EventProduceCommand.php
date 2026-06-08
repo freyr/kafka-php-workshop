@@ -12,8 +12,8 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Uid\Uuid;
 use Workshop\Kafka\Client\ProducerFactory;
-use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kafka\Serde\AvroPayload;
+use Workshop\Kafka\Serde\AvroSerializer;
 use Workshop\Produce\InventoryReserved;
 use Workshop\Produce\Message;
 use Workshop\Produce\MessageNameResolver;
@@ -32,7 +32,7 @@ final class EventProduceCommand extends Command
     public function __construct(
         private readonly ProducerFactory $producers,
         private readonly MessageRouting $routing,
-        private readonly AvroEnvelopeSerializer $avro,
+        private readonly AvroSerializer $avro,
         private readonly MessageNameResolver $names,
     ) {
         parent::__construct();
