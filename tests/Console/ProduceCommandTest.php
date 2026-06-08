@@ -63,6 +63,6 @@ final class ProduceCommandTest extends TestCase
             new MessageNameResolver(),
         );
 
-        return new CommandTester(new ProduceCommand($factory, new JsonSerializer(new MessageNameResolver())));
+        return new CommandTester(new ProduceCommand($factory, new JsonSerializer()));
     }
 }

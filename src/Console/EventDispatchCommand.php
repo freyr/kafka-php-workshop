@@ -68,8 +68,21 @@ final class EventDispatchCommand extends Command
         ];
 
         $handler = function (\RdKafka\Message $message) use ($output, &$tally): void {
-            // A consumer of a shared topic must tolerate bytes it cannot decode
-            // (non-AVRO history, a schema it lacks). Skip, don't crash.
+            // Route by the message-name header — no payload decode needed, so a
+            // message this consumer does not handle is skipped without decoding (and
+            // without decompressing) its body. This is the whole point of carrying
+            // the wire name out-of-band in a header rather than inside the envelope.
+            $name = $this->nameOf($message);
+            $dtoClass = '' === $name ? null : $this->dtoRouting->for($name);
+            if (null === $dtoClass) {
+                $this->onUnhandled($output, $name, $tally);
+
+                return;
+            }
+
+            // Only the messages we actually route get decoded. A consumer of a
+            // shared topic must tolerate bytes it cannot decode (non-AVRO history, a
+            // schema it lacks). Skip, don't crash.
             try {
                 $event = $this->avro->decode($message->payload);
             } catch (\Throwable) {
@@ -77,14 +90,6 @@ final class EventDispatchCommand extends Command
             }
             if (! is_array($event)) {
                 ++$tally['skipped'];
-
-                return;
-            }
-
-            $name = $this->nameOf($event);
-            $dtoClass = '' === $name ? null : $this->dtoRouting->for($name);
-            if (null === $dtoClass) {
-                $this->onUnhandled($output, $name, $tally);
 
                 return;
             }
@@ -135,12 +140,13 @@ final class EventDispatchCommand extends Command
     }
 
     /**
-     * @param array<string, mixed> $event
+     * The wire name travels as the `message-name` Kafka header, so it can be read
+     * before — and instead of — decoding the payload. An absent or non-string
+     * header yields '', which routes to onUnhandled.
      */
-    private function nameOf(array $event): string
+    private function nameOf(\RdKafka\Message $message): string
     {
-        $metadata = is_array($event['metadata'] ?? null) ? $event['metadata'] : [];
-        $name = $metadata['name'] ?? null;
+        $name = $message->headers['message-name'] ?? null;
 
         return is_string($name) ? $name : '';
     }

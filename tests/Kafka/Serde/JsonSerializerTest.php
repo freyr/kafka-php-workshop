@@ -6,7 +6,6 @@ namespace Workshop\Tests\Kafka\Serde;
 
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Serde\JsonSerializer;
-use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\TextMessage;
 
 final class JsonSerializerTest extends TestCase
@@ -15,7 +14,7 @@ final class JsonSerializerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->serializer = new JsonSerializer(new MessageNameResolver());
+        $this->serializer = new JsonSerializer();
     }
 
     public function testEncodesAMessageToItsEnvelopedJson(): void
@@ -37,8 +36,8 @@ final class JsonSerializerTest extends TestCase
         self::assertIsArray($decoded['metadata']);
         /** @var array<string, mixed> $metadata */
         $metadata = $decoded['metadata'];
-        self::assertSame(['event_id', 'timestamp', 'name'], array_keys($metadata));
-        self::assertSame('text', $metadata['name']);
+        // The wire name is no longer in the body — it rides as the message-name header.
+        self::assertSame(['event_id', 'timestamp'], array_keys($metadata));
         self::assertIsInt($metadata['timestamp']);
     }
 
@@ -55,14 +54,13 @@ final class JsonSerializerTest extends TestCase
     public function testDecodesBackToAnAssociativeArray(): void
     {
         $decoded = $this->serializer->decode(
-            '{"metadata":{"event_id":"x","timestamp":1717840000123,"name":"text"},"sequence":1,"key":"a","text":"event-1"}',
+            '{"metadata":{"event_id":"x","timestamp":1717840000123},"sequence":1,"key":"a","text":"event-1"}',
         );
 
         self::assertSame([
             'metadata' => [
                 'event_id' => 'x',
                 'timestamp' => 1717840000123,
-                'name' => 'text',
             ],
             'sequence' => 1,
             'key' => 'a',

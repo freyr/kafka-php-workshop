@@ -11,9 +11,10 @@ use Symfony\Component\Uid\Uuid;
  * static create() named constructor, which hands the base two things: the Kafka
  * partition key and the business payload as a plain array. The base supplies the
  * envelope autonomously — a UUIDv7 event_id and a UTC epoch-millis timestamp are
- * generated at construction. The wire name is NOT read here; it is resolved once
- * per class from the concrete class's #[MessageName] attribute by
- * MessageNameResolver at the serialization stage and passed into envelope().
+ * generated at construction. The wire name is NOT part of the envelope; it is
+ * resolved once per class from the concrete class's #[MessageName] attribute by
+ * MessageNameResolver and stamped onto the record as the `message-name` Kafka
+ * header by the producer, so consumers can route or skip without decoding.
  */
 abstract class Message
 {
@@ -47,18 +48,18 @@ abstract class Message
 
     /**
      * The full enveloped record that goes on the wire: a minimal metadata record
-     * plus the flattened business payload. The wire name is supplied by the
-     * caller (resolved once via MessageNameResolver), not re-derived here.
+     * plus the flattened business payload. The wire name is NOT carried in the
+     * payload — it travels as the `message-name` Kafka header (stamped by the
+     * producer) so a consumer can route or skip a record without decoding the body.
      *
      * @return array<string, mixed>
      */
-    final public function envelope(string $name): array
+    final public function envelope(): array
     {
         return [
             'metadata' => [
                 'event_id' => $this->eventId,
                 'timestamp' => $this->timestamp,
-                'name' => $name,
             ],
             ...$this->payload,
         ];

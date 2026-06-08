@@ -51,7 +51,7 @@ final readonly class AvroSerializer implements MessageSerializer
         $name = $this->names->nameOf($payload);
         $route = $this->routing->for($name);
 
-        return $this->serializer->encodeRecord($route->subject, \AvroSchema::parse($route->schemaJson()), $payload->envelope($name));
+        return $this->serializer->encodeRecord($route->subject, \AvroSchema::parse($route->schemaJson()), $payload->envelope());
     }
 
     /**

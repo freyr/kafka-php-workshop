@@ -88,7 +88,13 @@ final class MessageProducer
 
     private function send(string $topic, int $partition, Message $message, ?string $key): void
     {
-        $this->topicFor($topic)->producev($partition, 0, $this->serializer->encode($message), $key);
+        // The wire name rides as a header, not in the body: a consumer can route or
+        // skip a record by reading message-name without decoding the payload.
+        $headers = [
+            'message-name' => $this->names->nameOf($message),
+        ];
+
+        $this->topicFor($topic)->producev($partition, 0, $this->serializer->encode($message), $key, $headers);
         // Serve delivery-report and error callbacks without blocking.
         $this->producer->poll(0);
     }

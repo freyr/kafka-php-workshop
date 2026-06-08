@@ -5,7 +5,6 @@
   "doc": "Canonical minimal envelope metadata. Reference copy — the event schemas inline this record so each registers as one self-contained subject.",
   "fields": [
     {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
-    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
-    {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
   ]
 }

@@ -13,8 +13,7 @@
         "doc": "Minimal envelope metadata carried by every event.",
         "fields": [
           {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
-          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
-          {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
         ]
       }
     },

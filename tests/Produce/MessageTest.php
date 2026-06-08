@@ -17,11 +17,11 @@ final class MessageTest extends TestCase
         self::assertSame('order-created', $attribute->value);
     }
 
-    public function testEnvelopeOnNamedMessage(): void
+    public function testEnvelopeCarriesMetadataAndFlatPayload(): void
     {
         $message = MessageTestDouble::create('ord-1');
 
-        $envelope = $message->envelope('order-created');
+        $envelope = $message->envelope();
 
         self::assertSame([
             'order_id' => 'ord-1',
@@ -32,8 +32,8 @@ final class MessageTest extends TestCase
         self::assertIsArray($envelope['metadata']);
         /** @var array<string, mixed> $metadata */
         $metadata = $envelope['metadata'];
-        self::assertSame(['event_id', 'timestamp', 'name'], array_keys($metadata));
-        self::assertSame('order-created', $metadata['name']);
+        // The wire name is not in the envelope — it rides as the message-name header.
+        self::assertSame(['event_id', 'timestamp'], array_keys($metadata));
         self::assertIsInt($metadata['timestamp']);
         self::assertGreaterThan(1_700_000_000_000, $metadata['timestamp']);
         self::assertIsString($metadata['event_id']);
