@@ -38,7 +38,6 @@ final class MessageProducerTest extends TestCase
 
         $routing = new MessageRouting([
             'fixture' => [
-                'type' => 'avro',
                 'topic' => 'demo-topic',
             ],
         ]);

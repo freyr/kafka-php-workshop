@@ -99,7 +99,7 @@ bin/console topic:describe <topic>                                # partition co
   RecordNameStrategy subjects. `SchemaRegistryClient` handles register/check/versions;
   it never touches the wire format.
 - **Routing is data.** `config/producers.yaml` maps message-name →
-  `{type, topic, subject, schema}` (`MessageRouting`/`Route`); `config/consumers.yaml`
+  `{topic, subject, schema}` (`MessageRouting`/`Route`); `config/consumers.yaml`
   maps message-name → read-model DTO (`DtoRouting`).
 
 ## Layout

@@ -56,12 +56,6 @@ final class SchemaRegisterCommand extends Command
             return Command::INVALID;
         }
 
-        if ('avro' !== $this->routing->for($type)->type) {
-            $output->writeln("<error>{$type} is a json route — it has no schema to register.</error>");
-
-            return Command::INVALID;
-        }
-
         return $this->registerSubject($type, $file, $output);
     }
 
@@ -73,11 +67,7 @@ final class SchemaRegisterCommand extends Command
             return Command::INVALID;
         }
 
-        // Only avro routes register a subject; json routes (Block 1-2) have no schema.
-        $names = array_values(array_filter(
-            $this->routing->names(),
-            fn (string $name): bool => 'avro' === $this->routing->for($name)->type,
-        ));
+        $names = $this->routing->names();
         $failed = 0;
         foreach ($names as $name) {
             if (Command::SUCCESS !== $this->registerSubject($name, null, $output)) {

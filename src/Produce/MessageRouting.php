@@ -5,16 +5,14 @@ declare(strict_types=1);
 namespace Workshop\Produce;
 
 /**
- * Maps a message name to its wire identity (type + topic + subject + schema). The
- * single source of truth for produce-side routing, loaded from
- * config/producers.yaml. The per-type routing lives in data
- * (config/producers.yaml), not in code. A json route declares only a topic;
- * subject/schema default to empty and are never read.
+ * Maps a message name to its wire identity (topic + subject + schema). The single
+ * source of truth for produce-side routing, loaded as data from
+ * config/producers.yaml, not code.
  */
 final readonly class MessageRouting
 {
     /**
-     * @param array<string, array{type?: string, topic: string, subject?: string, schema?: string}> $routes
+     * @param array<string, array{topic: string, subject?: string, schema?: string}> $routes
      */
     public function __construct(
         private array $routes,
@@ -29,7 +27,7 @@ final readonly class MessageRouting
 
         $route = $this->routes[$name];
 
-        return new Route($route['topic'], $route['subject'] ?? '', $route['schema'] ?? '', $route['type'] ?? 'avro');
+        return new Route($route['topic'], $route['subject'] ?? '', $route['schema'] ?? '');
     }
 
     /**
