@@ -11,7 +11,11 @@
             <directory>tests</directory>
         </testsuite>
     </testsuites>
-    <source>
+    <!-- ignoreIndirectDeprecations: drop deprecations triggered in third-party
+         code (e.g. the schema-registry client under PHP 8.4) — outside our control
+         and already silenced at runtime in bin/console. Deprecations in our own
+         src/ still surface and would fail the suite. -->
+    <source ignoreIndirectDeprecations="true">
         <include>
             <directory>src</directory>
         </include>
