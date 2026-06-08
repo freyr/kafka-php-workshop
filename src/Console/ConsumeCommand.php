@@ -17,6 +17,7 @@ use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Runtime\RunLimits;
+use Workshop\Kafka\Serde\JsonSerializer;
 
 #[AsCommand(
     name: 'consume',
@@ -27,6 +28,7 @@ final class ConsumeCommand extends Command
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
+        private readonly JsonSerializer $serializer,
     ) {
         parent::__construct();
     }
@@ -66,13 +68,13 @@ final class ConsumeCommand extends Command
 
         $consumer = $this->consumers->create($profile, $group, $this->callbacks($narrate));
 
-        $handler = static function (\RdKafka\Message $message) use ($output): void {
+        $handler = function (\RdKafka\Message $message) use ($output): void {
             $output->writeln(sprintf(
                 'partition=%d offset=%d key=%s value=%s',
                 $message->partition,
                 $message->offset,
                 $message->key ?? '<null>',
-                $message->payload,
+                $this->render($message->payload),
             ));
         };
 
@@ -86,6 +88,46 @@ final class ConsumeCommand extends Command
         );
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Render a consumed payload. The Block 1-2 producer emits JSON via the native
+     * Symfony Serializer, so decode it back to its fields; anything that is not
+     * decodable JSON (legacy plain-string messages on the topic) is shown verbatim
+     * rather than crashing the run.
+     */
+    private function render(?string $payload): string
+    {
+        if (null === $payload) {
+            return '<null>';
+        }
+
+        try {
+            $decoded = $this->serializer->decode($payload);
+        } catch (\Throwable) {
+            return $payload;
+        }
+
+        if (! is_array($decoded)) {
+            return $payload;
+        }
+
+        $fields = [];
+        foreach ($decoded as $field => $value) {
+            $fields[] = sprintf('%s: %s', $field, $this->stringify($value));
+        }
+
+        return '{' . implode(', ', $fields) . '}';
+    }
+
+    private function stringify(mixed $value): string
+    {
+        return match (true) {
+            null === $value => 'null',
+            is_bool($value) => $value ? 'true' : 'false',
+            is_scalar($value) => (string) $value,
+            default => json_encode($value) ?: '<unrenderable>',
+        };
     }
 
     private function callbacks(?\Closure $narrate): ?CallbackKit

@@ -13,7 +13,7 @@ use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
-use Workshop\Kafka\Serde\StringSerializer;
+use Workshop\Kafka\Serde\JsonSerializer;
 
 /**
  * The input-validation branches return Command::INVALID before any client is
@@ -61,6 +61,6 @@ final class ProduceCommandTest extends TestCase
             new ProfileRegistry(new KafkaTuning()),
         );
 
-        return new CommandTester(new ProduceCommand($factory, new StringSerializer()));
+        return new CommandTester(new ProduceCommand($factory, new JsonSerializer()));
     }
 }

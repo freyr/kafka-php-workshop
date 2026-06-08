@@ -11,7 +11,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kafka\Client\ProducerFactory;
-use Workshop\Kafka\Serde\StringSerializer;
+use Workshop\Kafka\Serde\JsonSerializer;
+use Workshop\Produce\TextMessage;
 
 #[AsCommand(
     name: 'produce',
@@ -21,7 +22,7 @@ final class ProduceCommand extends Command
 {
     public function __construct(
         private readonly ProducerFactory $producers,
-        private readonly StringSerializer $serializer,
+        private readonly JsonSerializer $serializer,
     ) {
         parent::__construct();
     }
@@ -67,20 +68,21 @@ final class ProduceCommand extends Command
 
         for ($i = 1; $i <= $count; ++$i) {
             $key = [] === $keys ? null : $keys[($i - 1) % count($keys)];
-            $payload = strtr($template, [
+            $text = strtr($template, [
                 '{n}' => (string) $i,
                 '{key}' => $key ?? '',
             ]);
+            $message = TextMessage::create($i, $key, $text);
 
             if (null !== $partition) {
-                $producer->toPartition($topicName, $partition, $payload, $key);
+                $producer->toPartition($topicName, $partition, $message, $key);
             } elseif (null !== $key) {
-                $producer->keyed($topicName, $key, $payload);
+                $producer->keyed($topicName, $key, $message);
             } else {
-                $producer->unkeyed($topicName, $payload);
+                $producer->unkeyed($topicName, $message);
             }
 
-            $output->writeln($this->describe($partition, $key, $payload));
+            $output->writeln($this->describe($partition, $key, $text));
         }
 
         $producer->close();

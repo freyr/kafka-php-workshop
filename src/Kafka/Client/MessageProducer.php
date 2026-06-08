@@ -17,7 +17,7 @@ use Workshop\Kafka\Serde\MessageSerializer;
  *  - toPartition() pin a specific partition, overriding key-based routing.
  *
  * The payload is encoded through the injected MessageSerializer, so the same
- * producer speaks raw strings (Block 1-2) or AVRO envelopes (Block 3) unchanged.
+ * producer speaks JSON (Block 1-2) or AVRO envelopes (Block 3) unchanged.
  * Call close() to flush — librdkafka sends asynchronously, so undelivered messages
  * are lost if the process exits without flushing.
  */

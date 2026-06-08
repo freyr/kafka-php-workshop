@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Workshop\Kafka\Serde;
 
 /**
- * Keeps payloads on the wire as plain strings — the Block 1-2 default, before AVRO
- * is introduced.
+ * Keeps payloads on the wire as plain strings — the primitive baseline before
+ * Blocks 1-2 move to structured JSON (JsonSerializer) and Block 3 to AVRO.
  */
 final readonly class StringSerializer implements MessageSerializer
 {
