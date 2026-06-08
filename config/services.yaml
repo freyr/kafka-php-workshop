@@ -1,0 +1,68 @@
+# Dependency-injection wiring, expressed as data. The producer and consumer
+# routing tables live in their own files and are merged in via imports — each
+# declares the `workshop:` namespace owned by WorkshopExtension.
+imports:
+    - { resource: producers.yaml }
+    - { resource: consumers.yaml }
+
+services:
+    _defaults:
+        autowire: true       # resolve constructor dependencies by type
+        autoconfigure: true
+
+    # Any Symfony Command is tagged so bin/console discovers it, and made public
+    # so it can be fetched from the compiled container by id.
+    _instanceof:
+        Symfony\Component\Console\Command\Command:
+            tags: ['console.command']
+            public: true
+
+    # PSR-4 autodiscovery for the pure php-rdkafka layer (Blocks 1-3). The value
+    # objects, enums and callback/client wrappers are constructed by the factories
+    # (never injected), so they are excluded just like Topics.
+    Workshop\Kafka\:
+        resource: '../src/Kafka/'
+        exclude:
+            - '../src/Kafka/Config/ClientRole.php'
+            - '../src/Kafka/Config/KafkaSetting.php'
+            - '../src/Kafka/Config/KafkaProfile.php'
+            - '../src/Kafka/Config/Topics.php'
+            - '../src/Kafka/Callback'
+            - '../src/Kafka/Runtime/CommitPolicy.php'
+            - '../src/Kafka/Runtime/RunLimits.php'
+            - '../src/Kafka/Client/MessageProducer.php'
+            - '../src/Kafka/Admin/TopicAdmin.php'
+
+    Workshop\Console\:
+        resource: '../src/Console/'
+
+    # The Symfony-Serializer-backed denormalizer that turns a decoded payload into
+    # a read-model DTO (the DtoRouting table is wired by WorkshopExtension).
+    Workshop\Consume\MessageDenormalizer: ~
+
+    # Resolves a message's wire name from its #[MessageName] attribute, caching the
+    # class => name mapping so reflection runs once per type (produce-side only;
+    # the Produce namespace is otherwise value objects, never services).
+    Workshop\Produce\MessageNameResolver: ~
+
+    # The Schema Registry URL can't be type-hint-autowired — bind it by name.
+    Workshop\Kafka\Serde\AvroEventSerializer:
+        arguments:
+            $schemaRegistryUrl: '%schema_registry.url%'
+
+    Workshop\Kafka\Serde\SchemaRegistryClient:
+        arguments:
+            $schemaRegistryUrl: '%schema_registry.url%'
+
+    # ConfigStatsCommand (Block 8 raw-rdkafka deep dive) needs the broker list.
+    Workshop\Console\ConfigStatsCommand:
+        arguments:
+            $brokers: '%kafka.brokers%'
+
+    # The pure-rdkafka ConfBuilder needs the broker list as a string; the broker
+    # probe interface resolves to its TCP implementation.
+    Workshop\Kafka\Config\ConfBuilder:
+        arguments:
+            $brokers: '%kafka.brokers%'
+
+    Workshop\Kafka\Config\BrokerProbe: '@Workshop\Kafka\Config\TcpBrokerProbe'

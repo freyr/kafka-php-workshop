@@ -1,0 +1,27 @@
+# Produce-side routing: message name => wire identity (topic + subject + schema).
+# Subjects use RecordNameStrategy (the schema's fully-qualified record name,
+# lower_snake component) and carry NO version marker — a breaking change mints a
+# brand-new subject, never a vN suffix. order-* events share one topic; each
+# registers its own subject. Schema paths resolve against %kafka.schema_dir%.
+workshop:
+    producers:
+        order-created:
+            topic: enet.ecommerce.orders
+            subject: com.ecommerce.orders.order_created
+            schema: '%kafka.schema_dir%/orders/OrderCreated.avsc'
+        order-updated:
+            topic: enet.ecommerce.orders
+            subject: com.ecommerce.orders.order_updated
+            schema: '%kafka.schema_dir%/orders/OrderUpdated.avsc'
+        order-cancelled:
+            topic: enet.ecommerce.orders
+            subject: com.ecommerce.orders.order_cancelled
+            schema: '%kafka.schema_dir%/orders/OrderCancelled.avsc'
+        payment-processed:
+            topic: enet.ecommerce.payments
+            subject: com.ecommerce.payments.payment_processed
+            schema: '%kafka.schema_dir%/payments/PaymentProcessed.avsc'
+        inventory-reserved:
+            topic: enet.ecommerce.inventory
+            subject: com.ecommerce.inventory.inventory_reserved
+            schema: '%kafka.schema_dir%/inventory/InventoryReserved.avsc'

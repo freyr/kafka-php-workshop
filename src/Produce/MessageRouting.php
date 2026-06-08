@@ -6,8 +6,8 @@ namespace Workshop\Produce;
 
 /**
  * Maps a message name to its wire identity (topic + subject + schema). The single
- * source of truth for produce-side routing, loaded from config/produce.php. The
- * per-type routing now lives in data (config/produce.php), not in code.
+ * source of truth for produce-side routing, loaded from config/producers.yaml.
+ * The per-type routing lives in data (config/producers.yaml), not in code.
  */
 final class MessageRouting
 {

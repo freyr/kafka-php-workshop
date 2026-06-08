@@ -9,27 +9,14 @@ require __DIR__ . '/../vendor/autoload.php';
 // libraries (e.g. the schema-registry client) under PHP 8.4.
 error_reporting(E_ALL & ~E_DEPRECATED);
 
-use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\Dotenv\Dotenv;
+use Workshop\Framework\Kernel;
 
 (new Dotenv())->bootEnv(__DIR__ . '/../.env');
 
-// $_ENV values are typed as mixed; narrow each to a string with a default.
-$env = static fn (string $key, string $default): string => is_string($value = $_ENV[$key] ?? null) ? $value : $default;
-
-$container = new ContainerBuilder();
-
-$container->setParameter('kafka.brokers', $env('KAFKA_BROKERS', 'kafka:29092'));
-$container->setParameter('schema_registry.url', $env('SCHEMA_REGISTRY_URL', 'http://schema-registry:8081'));
-
-(new PhpFileLoader($container, new FileLocator(__DIR__ . '/../config')))
-    ->load('services.php');
-
-$container->compile();
+$container = (new Kernel(dirname(__DIR__)))->boot();
 
 $app = new Application('kafka-php-workshop', 'dev');
 foreach (array_keys($container->findTaggedServiceIds('console.command')) as $id) {
