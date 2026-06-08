@@ -1,282 +1,150 @@
 # PHP + Kafka Workshop
 
-Working repo for a 2-day Kafka-for-PHP-teams workshop. Holds runnable demo
-commands, AVRO schemas, slide assets, and a Docker stack with Kafka,
-Confluent Schema Registry, Kafka UI, MySQL, Kafka Connect (Debezium CDC for
-the Block 6 outbox), and a PHP 8.4 container with
-`php-rdkafka` (extension) + [`enqueue/rdkafka`](https://github.com/php-enqueue/rdkafka)
-(queue-interop wrapper used by all PHP commands) + `doctrine/dbal` (the
-Block 5 idempotency demo), wired through `symfony/console` +
-`symfony/dependency-injection` (with PSR-4 autodiscovery via `symfony/config`)
-and configured through `symfony/dotenv`.
+Runnable counterpart to a 2-day Kafka-for-PHP-teams workshop: demo CLI commands,
+AVRO schemas, and a Docker stack (Kafka in KRaft mode, Confluent Schema Registry,
+Kafka UI) plus a PHP 8.4 container. All Kafka I/O is **raw `php-rdkafka`** (no
+queue-interop layer), wired through `symfony/console` + `symfony/dependency-injection`
+with YAML config and `symfony/dotenv`. Per-block facilitator notes live locally in
+`blocks/` (gitignored — pulled from the Consulting vault).
 
-Per-block facilitator notes live locally in `blocks/` (gitignored — pulled
-from the Consulting vault `PHP-Kafka-Research/`). This repo is the runnable
-counterpart to that material.
+## Stack
+
+```sh
+make create                                   # start kafka + schema registry + kafka-ui (detached)
+docker compose run --rm php composer install  # first run: install PHP deps in the php container
+make destroy                                  # tear down and wipe the kafka-data volume
+```
+
+| Service         | URL / port                | Notes                          |
+|-----------------|---------------------------|--------------------------------|
+| Kafka broker    | `localhost:9092`          | KRaft mode, single broker      |
+| Schema Registry | `http://localhost:8081`   | Confluent SR, AVRO schemas     |
+| Kafka UI        | `http://localhost:8080`   | Kafbat UI                      |
+| PHP console     | `bin/console list`        | run via `docker compose run --rm php` |
+
+## Commands
+
+Run everything through the php container:
+
+```sh
+docker compose run --rm php bin/console <command> [args]
+```
+
+**Generic produce/consume** (Block 1–2, JSON) — parametrized, not per-demo:
+
+```sh
+bin/console produce [-c N] [--key a,b,c | --key-cardinality N | --unkeyed] [--payload 'event-{n}']
+bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
+```
+
+`produce` emits N `TextMessage`s to the routed `consumer-groups-events` topic,
+cycling keys for stable key→partition hashing (or `--unkeyed` to scatter).
+`consume` under a named `-g` group keeps committed offsets across runs; omit `-g`
+to read from earliest under a throwaway group.
+
+**Enveloped AVRO events** (Block 3) — Confluent wire format against Schema Registry:
+
+```sh
+bin/console events:produce <order.created|order.updated|order.cancelled|payment.processed|inventory.reserved> \
+    [--order-id ID] [--status STATUS] [--reason REASON]
+bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # decode + print the envelope
+bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by message-name header
+```
+
+`order.created/updated/cancelled` share the `enet.ecommerce.orders` topic, keyed by
+order id, each on its own subject lineage. `events:dispatch` routes each record by
+its `message-name` header to a per-type DTO handler, ignoring unknown types and
+skipping non-AVRO bytes.
+
+**Schema evolution** (Block 4) — flow is **check → register → produce** (schemas are
+**not** auto-registered on produce):
+
+```sh
+bin/console schema:check    <type> <schema-file>   # CI gate; non-zero exit on incompatible
+bin/console schema:register <type> [schema-file]   # register a subject (registry assigns id, enforces compat)
+bin/console schema:register --all                  # bootstrap every routed subject on a fresh stack
+bin/console schema:versions <type>                 # registered version lineage
+```
+
+Evolution demo schemas: `schemas/orders/evolution/OrderCreated-v2-compatible.avsc`
+(optional field + default → PASS) and `-v2-breaking.avsc` (required field → FAIL).
+
+**Config & operations** (Block 8) — raw `\RdKafka`, the callbacks have no higher-level surface:
+
+```sh
+bin/console config:show [--producer] [--consumer]                 # recommended settings: value · default · why
+bin/console config:stats [topic] [-g GROUP] [-r SECS] [--slow MS] # raw consumer: lag/RTT/queue from the stats callback
+bin/console topic:list                                            # list topics (raw metadata API)
+bin/console topic:describe <topic>                                # partition count
+```
+
+**Admin shell scripts** in `bin/` (php-rdkafka has no admin API): `topic-create`,
+`topic-delete`, `topic-describe`, `topic-map`, `topic-map-delete`, `group-describe`,
+`group-reset`, `group-delete`, `partition-offsets`.
+
+## Producer & serializer model
+
+- **`Message`** (`src/Produce/Message.php`) is an abstract base. Each event is built
+  through a static `create()` named constructor (`OrderCreated::create($orderId)`,
+  `TextMessage::create(...)`, …). The base supplies the envelope autonomously:
+  `envelope()` = `{metadata: {event_id, timestamp}, ...payload}`. The partition key
+  is a transport concern, kept out of the payload.
+- **Wire name as a header.** The name lives in a `#[MessageName('order.created')]`
+  class attribute, resolved once per class by `MessageNameResolver`, and stamped as
+  the `message-name` Kafka **header** — so consumers route or skip without decoding.
+- **Serializers** implement `MessageSerializer` (`src/Kafka/Serde/`): `JsonSerializer`
+  (Block 1–2) and `AvroSerializer` (Block 3, Confluent wire format — magic byte +
+  4-byte schema id + Avro body, RecordNameStrategy subjects). `SchemaRegistryClient`
+  handles register/check/versions; it never touches the wire format.
+- **Routing is data.** `config/producers.yaml` maps message-name →
+  `{type, topic, subject, schema}` (`MessageRouting`/`Route`); `config/consumers.yaml`
+  maps message-name → read-model DTO (`DtoRouting`).
 
 ## Layout
 
 ```
 .
-├── compose.yaml             # Compose stack: Kafka + SR + UI + MySQL + Connect + PHP
-├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka + pdo_mysql image
-├── .env                     # Workshop defaults (loaded by bin/console)
-├── bin/
-│   ├── console              # Symfony Console entry — all PHP commands
-│   ├── kafka-setup / kafka-teardown   # create/delete every workshop topic (all blocks); list in bin/lib/topics.sh
-│   ├── topic-create / topic-delete / topic-describe   # ad-hoc single-topic admin
-│   ├── group-describe / group-reset / group-delete
-│   ├── partition-offsets
-│   └── debezium-register / debezium-status / debezium-delete   # Debezium outbox connector (Block 6)
+├── compose.yaml             # Kafka + Schema Registry + Kafka UI + PHP
+├── Dockerfile               # PHP 8.4 + librdkafka + php-rdkafka
+├── .env                     # KAFKA_BROKERS, SCHEMA_REGISTRY_URL (.env.local overrides, gitignored)
+├── bin/console              # Symfony Console entry; plus admin shell scripts
 ├── config/
-│   ├── services.php         # DI definitions; PSR-4 autodiscovery of services
-│   └── debezium-outbox-connector.json   # Debezium MySQL + Outbox Event Router config (Block 6)
+│   ├── services.yaml        # DI: PSR-4 autodiscovery, command tagging
+│   ├── producers.yaml       # produce-side routing (name → type/topic/subject/schema)
+│   └── consumers.yaml       # consume-side routing (name → DTO)
 ├── src/
-│   ├── Kernel/              # KafkaContextFactory, AvroEventSerializer, SchemaRegistryClient,
-│   │                        #   Database + IdempotencyStore + SideEffectStore (Block 5),
-│   │                        #   OutboxStore (Block 6), enums
-│   └── Console/             # One class per command, self-describing names
-├── schemas/                 # AVRO schemas: common/ + orders/ payments/ inventory/
+│   ├── Console/             # one class per command (#[AsCommand])
+│   ├── Produce/             # Message base + events, MessageName, routing
+│   ├── Consume/             # read-model DTOs + denormalizer
+│   ├── Kafka/               # Client, Serde, Config, Callback, Runtime, Admin
+│   └── Framework/           # Kernel + DI extension
+├── schemas/                 # AVRO: common/ orders/ (+evolution/) payments/ inventory/
 ├── tests/                   # PHPUnit suite
-└── blocks/                  # Per-block facilitator notes (gitignored)
+└── blocks/                  # facilitator notes (gitignored)
 ```
-
-## Running the stack
-
-```sh
-make create                                   # bring up kafka + schema registry + kafka-ui + mysql + connect (detached)
-docker compose run --rm php composer install  # first-time: install PHP deps in the php container
-```
-
-Services exposed on the host:
-
-| Service          | URL / port                  | Notes                                  |
-|------------------|-----------------------------|----------------------------------------|
-| Kafka broker     | `localhost:9092`            | KRaft mode, single broker              |
-| Schema Registry  | `http://localhost:8081`     | Confluent SR, `AVRO` schemas           |
-| Kafka UI         | `http://localhost:8080`     | Kafbat fork of the old provectus UI    |
-| MySQL            | `localhost:3306`            | `workshop`/`workshop`, db `workshop` — Block 5/6 stores  |
-| Kafka Connect    | `http://localhost:8083`     | Debezium (CDC outbox relay, Block 6)   |
-| PHP console      | `bin/console list`          | Run via `docker compose run --rm php`  |
-
-Topic, schema, and consumer-group state lives in the named volume `kafka-data`;
-MySQL data in `mysql-data`. Remove them (`docker compose down -v` or
-`make destroy`) to reset.
-
-### Running commands
-
-```sh
-docker compose run --rm php bin/console list                                    # show all commands
-docker compose run --rm php bin/console produce consumer-groups-events -c 5      # produce 5 events
-docker compose run --rm php bin/console consume consumer-groups-events -g group-a
-```
-
-Two generic commands cover every demo — parametrize them rather than adding new
-classes:
-
-```sh
-bin/console produce <topic> [-c N] [--key a,b,c | --key-cardinality N] [-p PARTITION] [--payload 'order-{n}']
-bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
-```
-
-`produce` cycles messages through `--key` (stable key→partition hashing) or pins
-them to `-p`; `consume` under a named `-g` group keeps its committed offsets
-across runs, while omitting `-g` reads the whole topic from earliest under a
-throwaway group (the old "inspect" behavior).
-
-For Block 3, a second pair works with **enveloped AVRO** events serialized in
-the Confluent wire format against Schema Registry (schemas in `schemas/`):
-
-```sh
-bin/console events:produce <order-created|order-updated|order-cancelled|payment-processed|inventory-reserved> \
-    [--order-id ID] [--correlation-id ID] [--causation-id ID] [--status STATUS] [--reason REASON]
-bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # decode + print the envelope
-bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by event_type
-```
-
-`events:produce` builds the metadata+payload envelope, AVRO-encodes it against
-the subject's **registered** schema (the fully-qualified record name —
-`RecordNameStrategy`, e.g. `com.ecommerce.orders.order_created`), and keys the
-message by `aggregate_id`. Schemas are **not** auto-registered on produce —
-register them explicitly first with `schema:register` (Block 4), or the encode
-fails. `events:consume` decodes via the registry and prints the envelope.
-
-**Multiple event types per topic.** `order-created`, `order-updated`, and
-`order-cancelled` all live on the **same** `enet.ecommerce.orders` topic — each
-its own subject/compatibility lineage under RecordNameStrategy, all keyed by
-`order_id` so one order's lifecycle stays ordered within a partition.
-`events:dispatch` is the consumer side: it decodes each message and routes by
-`event_type` to a per-type handler (open / update / cancel), ignores types it
-doesn't handle (forward-compatibility), and skips non-AVRO bytes rather than
-crashing. `order-created` prints a ready-to-paste lifecycle to drive the demo
-(`order-updated` → `order-cancelled` → `events:dispatch`), plus the caused
-`payment-processed` branch (shared `correlation_id`, linked `causation_id`).
-
-For Block 4, three commands drive schema evolution against the registry:
-
-```sh
-bin/console schema:register <type> [schema-file]   # register a subject's schema (explicit, out-of-band production path → assigns the schema id)
-bin/console schema:register --all                  # register every routed subject's canonical schema (one-shot bootstrap for a fresh stack)
-bin/console schema:check    <type> <schema-file>   # is a candidate .avsc compatible with the latest? (CI gate; non-zero exit on fail)
-bin/console schema:versions <type>                 # list the registered version lineage [1, 2, …]
-```
-
-The production flow is **check → register → produce**: `schema:check` gates a
-candidate schema in CI, `schema:register` registers it (the registry assigns the
-id and enforces compatibility server-side), and only then can `events:produce`
-encode against it. On a fresh stack, `schema:register --all` registers every
-subject up front so the producers work out of the box.
-
-`schema:check` is the pre-registration compatibility check (read-only). Demo
-schemas live in `schemas/orders/evolution/` — `OrderCreated-v2-compatible.avsc`
-(optional field + default → PASS) and `-v2-breaking.avsc` (required field, no
-default → FAIL).
-
-For Block 5, a delivery-guarantees demo shows at-least-once vs. idempotent
-processing, backed by MySQL via `doctrine/dbal`:
-
-```sh
-bin/console delivery:consume [topic] [-g GROUP] [--idempotent] [--crash-after N] [-m MAX] [-t TIMEOUT_MS]
-bin/console delivery:reset                       # truncate side_effects + processed_events
-```
-
-`delivery:consume` applies a side-effect row per order event; `--crash-after N`
-applies N then exits **without** committing the Kafka offset (simulating a crash
-after the DB commit but before the offset commit), so a recovery run redelivers.
-Without `--idempotent` the recovery duplicates the side-effect; with it, the
-`event_id` recorded in `processed_events` (same transaction as the side-effect)
-makes the redelivery a no-op. The idempotency record and the side-effect commit
-in one DBAL transaction; the Kafka offset is committed separately and last.
-
-For Block 6, an outbox demo shows the dual-write problem and its fix, with two
-relays — a PHP polling relay and Debezium CDC:
-
-```sh
-bin/console outbox:place [--order-id ID] [--naive] [--crash]   # place an order
-bin/console outbox:relay [--once] [-b BATCH] [-p POLL_SECS]     # polling relay → AVRO on the orders topic
-bin/console outbox:reset                                        # truncate orders + outbox
-```
-
-`outbox:place` writes the `orders` row and an `OrderCreated` event to the `outbox`
-table in **one** DBAL transaction; `--crash` exits right after the commit (the
-event is safe — a relay publishes it later). `--naive` instead commits the order
-and then publishes to Kafka directly — with `--crash` that loses the event (the
-dual-write trap). `outbox:relay` publishes unpublished rows as AVRO envelopes
-(read them with `events:consume enet.ecommerce.orders`), flushing to the broker
-before marking each row published, so it is at-least-once by design.
-
-The same outbox table can be shipped by **Debezium CDC** instead of the polling
-relay (needs the `connect` service, started by `make create`):
-
-```sh
-bin/debezium-register      # waits for Connect, creates topics, registers the connector
-bin/debezium-status        # connector + task state (expect RUNNING)
-bin/console outbox:place   # then consume the routed topic:
-bin/console consume enet.ecommerce.outbox.Order
-bin/debezium-delete        # remove the connector
-```
-
-The Outbox Event Router routes by `aggregate_type` to `enet.ecommerce.outbox.Order`,
-keys by `aggregate_id`, and unwraps the `payload` column to JSON. Config lives in
-`config/debezium-outbox-connector.json`. Debezium **3.x** is required for MySQL 8.4
-and the `mysql` service runs row-based binlog.
-
-For Block 7, a retry/DLT demo shows error classification, a bounded
-in-process-retry → retry-topic chain → Dead Letter Topic, and DLT recovery
-(the retry tiers and shared DLT are created by `bin/kafka-setup`):
-
-```sh
-bin/console retry:consume [topic] [--poison=id,…] [--flaky=id,…] [--naive] \
-    [--in-process-retries N] [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--memory-limit MB]
-bin/console dlt:inspect [topic] [-t TIMEOUT_MS]            # print DLT error metadata
-bin/console dlt:replay  [topic] [--dry-run] [-t TIMEOUT_MS] # re-publish to the original topic
-```
-
-`retry:consume` classifies failures: `--poison` ids go straight to the DLT (0
-retries), `--flaky` ids fail their in-process retries then route to
-`enet.ecommerce.orders.retry.5s` and succeed when that tier re-delivers them
-(point a second `retry:consume` at the retry topic to drain it). It acks only
-after a message succeeds or is durably routed, so the partition never blocks;
-`--naive` drops the routing and exits without acking to show a stuck partition.
-Success applies the Block 5 side-effect idempotently, so `dlt:replay` is safe to
-re-run — duplicates are skipped on `event_id`. `dlt:inspect` reads the shared
-`enet.internal.dead-letters` topic and prints each message's origin, error, retry
-count, and reason. Routing/metadata live in `src/Kernel/RetryRouter.php`.
-
-For Block 8, a config-and-operations deep dive — the one block that drops below
-the `enqueue` abstraction to raw `\RdKafka`, because the callbacks it teaches
-(delivery report, rebalance, statistics) have no `enqueue` surface:
-
-```sh
-bin/console config:show [--producer] [--consumer]              # recommended config: value · default · why
-bin/console config:stats [topic] [-g GROUP] [-r RUNTIME_SECS] \
-    [--slow MS] [--stats-interval MS] [-m MAX] [-t TIMEOUT_MS]  # raw consumer: lag/RTT from the stats callback
-```
-
-`config:show` prints the workshop's recommended producer and consumer librdkafka
-settings with the librdkafka default and a one-line rationale for each, so every
-non-default value can be defended (the values live in `src/Kernel/KafkaTuning.php`
-and drop into `KafkaContextFactory::forProducer($overrides)` /
-`forConsumer($group, $overrides)` — they are intentionally not baked into the
-factory's globals). `config:stats` is a raw php-rdkafka consumer that wires the
-`statistics`, `rebalance` (cooperative-sticky, incremental assign), and `error`
-callbacks: it prints **consumer lag, broker RTT, and fetch-queue depth** straight
-from the librdkafka stats JSON — the only window a PHP consumer has, since there
-is no JMX. Produce a backlog first, then add `--slow 40` to watch lag drain in
-real time; Ctrl-C does a graceful raw `commit()` + `close()` (immediate
-LeaveGroup). Note: php-rdkafka's high-level `KafkaConsumer` has no
-`storeOffsets()`, so the at-least-once pattern here is `enable.auto.commit=false`
-+ explicit `commit($message)` after processing — exactly what `enqueue`'s
-`acknowledge()` does under the hood.
-
-Admin operations against the broker are short bash scripts in `bin/`:
-
-```sh
-bin/kafka-setup                                     # create every workshop topic (all blocks) in one shot
-bin/topic-create scratch-events --partitions 1      # one-off topic outside the predefined inventory
-bin/group-reset offsets-group earliest offsets-events
-bin/partition-offsets partitioning-events
-```
-
-The predefined topic inventory lives in `bin/lib/topics.sh` — a single
-`"<topic>:<partitions>"` list that both `bin/kafka-setup` (create) and
-`bin/kafka-teardown` (delete) source, so the two can never drift. Add a topic by
-editing that one list. `make setup` / `make teardown` wrap the two scripts.
 
 ## Conventions
 
-- **PSR-4 autodiscovery for services and commands.** `config/services.php`
-  declares `autowire` + `autoconfigure` defaults and loads
-  `Workshop\Kernel\` and `Workshop\Console\` from their respective
-  directories. Any class extending `Symfony\Component\Console\Command\Command`
-  is auto-tagged `console.command` and registered with the Symfony
-  Application. Adding a command means creating one class — no edits to
-  `bin/console` or `services.php`.
-- **PHP commands use `enqueue/rdkafka` via the `KafkaContextFactory`
-  service.** Constructor-inject the factory and call `forProducer()` or
-  `forConsumer(string $groupId)`. Direct use of raw `RdKafka\*` classes is
-  reserved for the block-08 config deep-dive.
-- **Generic, parametrized commands over per-demo classes.** Two commands —
-  `ProduceCommand` (`produce`) and `ConsumeCommand` (`consume`) — back every
-  block. Topic, key, partition, group, count, and timeout are arguments and
-  options, not hardcoded per exercise, so the CLI mirrors real Kafka tools
-  (`kcat`, `kafka-console-{producer,consumer}`). Add behavior with a flag, not
-  a new class; reach for a new command only for a genuinely distinct operation.
-- **The three workshop topics are cataloged in `Workshop\Kernel\Topics`.**
-  Cases: `ConsumerGroups`, `Offsets`, `Partitioning` → `consumer-groups-events`,
-  `offsets-events`, `partitioning-events`. The commands accept any topic as a
-  plain string argument (real-life); the enum is the canonical name list the
-  blocks and admin scripts use, not a constraint the CLI enforces.
-- **Config lives in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`,
-  `DATABASE_URL`), loaded by `symfony/dotenv`. Per-user overrides go to
-  `.env.local` (gitignored).
-- **Admin shell scripts in `bin/`** wrap `docker compose exec kafka` calls
-  to the Kafka CLI — `enqueue/rdkafka` has no admin API, so these stay
-  shell.
-- One topic per entity/aggregate, carrying multiple event types over its
-  lifetime; subject naming follows `RecordNameStrategy` — the subject is the
-  schema's fully-qualified record name (record component in `lower_snake_case`,
-  e.g. `com.ecommerce.orders.v1.order_created`), so each event type evolves on
-  its own compatibility lineage independent of its topic-mates.
-- Polish-language comments are acceptable in workshop exercises (delivered
-  in Polish); code identifiers and shipped demos stay in English.
+- **PSR-4 autodiscovery.** `config/services.yaml` autowires `Workshop\Kafka\` and
+  `Workshop\Console\`; any `Command` is auto-tagged and registered. Adding a command
+  means adding one class — no wiring edits.
+- **Generic, parametrized commands over per-demo classes.** Add behavior with a flag,
+  not a new class; reach for a new command only for a genuinely distinct operation.
+- **Routing as data.** Topic/subject/schema and name→DTO maps live in YAML, not code.
+- **Subjects use RecordNameStrategy** — the fully-qualified record name
+  (`com.ecommerce.orders.order_created`), carrying no version marker; a breaking
+  change mints a new subject. Each event type evolves on its own lineage.
+- **Config in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`); per-user overrides
+  in `.env.local`.
+- Polish-language comments are fine in exercises; identifiers and shipped demos stay
+  in English.
+
+## Validation
+
+All work must pass three gates before it is done:
+
+```sh
+docker compose run --rm php composer ecs       # coding standard
+docker compose run --rm php composer phpstan   # static analysis
+docker compose run --rm php composer test      # phpunit
+```
