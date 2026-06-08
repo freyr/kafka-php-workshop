@@ -12,7 +12,7 @@ namespace Workshop\Produce;
  * record into JSON. The per-message timestamp now lives in that envelope metadata
  * rather than as a standalone field.
  */
-#[MessageName('text')]
+#[MessageName('text.plain')]
 final class TextMessage extends Message
 {
     public static function create(int $sequence, ?string $key, string $text): self

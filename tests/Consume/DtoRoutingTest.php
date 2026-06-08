@@ -13,10 +13,10 @@ final class DtoRoutingTest extends TestCase
     public function testResolvesAndMisses(): void
     {
         $routing = new DtoRouting([
-            'order-created' => OrderCreatedDto::class,
+            'order.created' => OrderCreatedDto::class,
         ]);
 
-        self::assertSame(OrderCreatedDto::class, $routing->for('order-created'));
-        self::assertNull($routing->for('payment-processed'));
+        self::assertSame(OrderCreatedDto::class, $routing->for('order.created'));
+        self::assertNull($routing->for('payment.processed'));
     }
 }

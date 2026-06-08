@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Produce;
 
-#[MessageName('inventory-reserved')]
+#[MessageName('inventory.reserved')]
 final class InventoryReserved extends Message
 {
     public static function create(string $orderId): self

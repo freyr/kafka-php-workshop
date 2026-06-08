@@ -15,7 +15,7 @@ final class MessageNameResolverTest extends TestCase
     {
         $resolver = new MessageNameResolver();
 
-        self::assertSame('order-created', $resolver->nameOf(OrderCreated::create('ord-1')));
+        self::assertSame('order.created', $resolver->nameOf(OrderCreated::create('ord-1')));
     }
 
     public function testCachedResultIsStableAcrossCalls(): void

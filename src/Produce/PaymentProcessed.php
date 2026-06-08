@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Produce;
 
-#[MessageName('payment-processed')]
+#[MessageName('payment.processed')]
 final class PaymentProcessed extends Message
 {
     public static function create(string $orderId, string $status = 'SUCCEEDED'): self

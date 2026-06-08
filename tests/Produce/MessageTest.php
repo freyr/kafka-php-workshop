@@ -12,9 +12,9 @@ final class MessageTest extends TestCase
 {
     public function testMessageNameAttributeCarriesValue(): void
     {
-        $attribute = new MessageName('order-created');
+        $attribute = new MessageName('order.created');
 
-        self::assertSame('order-created', $attribute->value);
+        self::assertSame('order.created', $attribute->value);
     }
 
     public function testEnvelopeCarriesMetadataAndFlatPayload(): void

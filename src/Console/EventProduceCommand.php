@@ -37,10 +37,10 @@ final class EventProduceCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('type', InputArgument::REQUIRED, 'order-created | order-updated | order-cancelled | payment-processed | inventory-reserved')
+            ->addArgument('type', InputArgument::REQUIRED, 'order.created | order.updated | order.cancelled | payment.processed | inventory.reserved')
             ->addOption('order-id', null, InputOption::VALUE_REQUIRED, 'Order id / partition key (default: generated)')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'For payment-processed: SUCCEEDED (default) or FAILED; for order-updated: the new status (default PAID)')
-            ->addOption('reason', null, InputOption::VALUE_REQUIRED, 'For order-cancelled: cancellation reason (default CUSTOMER_REQUEST)');
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'For payment.processed: SUCCEEDED (default) or FAILED; for order.updated: the new status (default PAID)')
+            ->addOption('reason', null, InputOption::VALUE_REQUIRED, 'For order.cancelled: cancellation reason (default CUSTOMER_REQUEST)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -52,7 +52,7 @@ final class EventProduceCommand extends Command
 
         $message = $this->message($type, $orderId, $status, $reason);
         if (null === $message) {
-            $output->writeln('<error>Unknown event type. Use: order-created | order-updated | order-cancelled | payment-processed | inventory-reserved</error>');
+            $output->writeln('<error>Unknown event type. Use: order.created | order.updated | order.cancelled | payment.processed | inventory.reserved</error>');
 
             return Command::INVALID;
         }
@@ -76,11 +76,11 @@ final class EventProduceCommand extends Command
         if ($message instanceof OrderCreated) {
             $output->writeln('');
             $output->writeln('<comment>continue this order\'s lifecycle on the SAME topic (multiple event types, one topic):</comment>');
-            $output->writeln(sprintf('  events:produce order-updated   --order-id %s --status PAID', $orderId));
-            $output->writeln(sprintf('  events:produce order-cancelled --order-id %s --reason OUT_OF_STOCK', $orderId));
+            $output->writeln(sprintf('  events:produce order.updated   --order-id %s --status PAID', $orderId));
+            $output->writeln(sprintf('  events:produce order.cancelled --order-id %s --reason OUT_OF_STOCK', $orderId));
             $output->writeln('  events:dispatch enet.ecommerce.orders -m 3        # consumer dispatches by name');
             $output->writeln('<comment>or branch into payment:</comment>');
-            $output->writeln(sprintf('  events:produce payment-processed --order-id %s', $orderId));
+            $output->writeln(sprintf('  events:produce payment.processed --order-id %s', $orderId));
         }
 
         return Command::SUCCESS;
@@ -89,11 +89,11 @@ final class EventProduceCommand extends Command
     private function message(string $type, string $orderId, ?string $status, ?string $reason): ?Message
     {
         return match ($type) {
-            'order-created' => OrderCreated::create($orderId),
-            'order-updated' => OrderUpdated::create($orderId, $status ?? 'PAID'),
-            'order-cancelled' => OrderCancelled::create($orderId, $reason ?? 'CUSTOMER_REQUEST'),
-            'payment-processed' => PaymentProcessed::create($orderId, $status ?? 'SUCCEEDED'),
-            'inventory-reserved' => InventoryReserved::create($orderId),
+            'order.created' => OrderCreated::create($orderId),
+            'order.updated' => OrderUpdated::create($orderId, $status ?? 'PAID'),
+            'order.cancelled' => OrderCancelled::create($orderId, $reason ?? 'CUSTOMER_REQUEST'),
+            'payment.processed' => PaymentProcessed::create($orderId, $status ?? 'SUCCEEDED'),
+            'inventory.reserved' => InventoryReserved::create($orderId),
             default => null,
         };
     }

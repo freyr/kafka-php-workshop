@@ -12,14 +12,14 @@ final class MessageRoutingTest extends TestCase
     public function testResolvesAKnownName(): void
     {
         $routing = new MessageRouting([
-            'order-created' => [
+            'order.created' => [
                 'topic' => 'enet.ecommerce.orders',
                 'subject' => 'com.ecommerce.orders.order_created',
                 'schema' => __DIR__ . '/../../schemas/orders/OrderCreated.avsc',
             ],
         ]);
 
-        $route = $routing->for('order-created');
+        $route = $routing->for('order.created');
 
         self::assertSame('enet.ecommerce.orders', $route->topic);
         self::assertSame('com.ecommerce.orders.order_created', $route->subject);

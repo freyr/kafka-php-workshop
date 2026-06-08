@@ -31,7 +31,7 @@ final class SchemaRegisterCommandTest extends TestCase
     public function testUnreadableSchemaFileIsRejected(): void
     {
         $routing = new MessageRouting([
-            'order-created' => [
+            'order.created' => [
                 'topic' => 'enet.ecommerce.orders',
                 'subject' => 'com.ecommerce.orders.order_created',
                 'schema' => '/tmp/canonical-not-used-here.avsc',
@@ -40,7 +40,7 @@ final class SchemaRegisterCommandTest extends TestCase
 
         $tester = new CommandTester($this->command($routing));
         $tester->execute([
-            'type' => 'order-created',
+            'type' => 'order.created',
             'schema-file' => '/no/such/path.avsc',
         ]);
 
@@ -54,7 +54,7 @@ final class SchemaRegisterCommandTest extends TestCase
         // registry contact.
         $tester = new CommandTester($this->command(new MessageRouting([])));
         $tester->execute([
-            'type' => 'order-created',
+            'type' => 'order.created',
             '--all' => true,
         ]);
 

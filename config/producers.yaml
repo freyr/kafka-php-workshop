@@ -3,34 +3,34 @@
 # schema; a json route (Block 1-2) carries only a topic. Subjects use
 # RecordNameStrategy (the schema's fully-qualified record name, lower_snake
 # component) and carry NO version marker — a breaking change mints a brand-new
-# subject, never a vN suffix. order-* events share one topic; each registers its
+# subject, never a vN suffix. order.* events share one topic; each registers its
 # own subject. Schema paths resolve against %kafka.schema_dir%.
 workshop:
     producers:
-        text:
+        text.plain:
             type: json
             topic: consumer-groups-events
-        order-created:
+        order.created:
             type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_created
             schema: '%kafka.schema_dir%/orders/OrderCreated.avsc'
-        order-updated:
+        order.updated:
             type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_updated
             schema: '%kafka.schema_dir%/orders/OrderUpdated.avsc'
-        order-cancelled:
+        order.cancelled:
             type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_cancelled
             schema: '%kafka.schema_dir%/orders/OrderCancelled.avsc'
-        payment-processed:
+        payment.processed:
             type: avro
             topic: enet.ecommerce.payments
             subject: com.ecommerce.payments.payment_processed
             schema: '%kafka.schema_dir%/payments/PaymentProcessed.avsc'
-        inventory-reserved:
+        inventory.reserved:
             type: avro
             topic: enet.ecommerce.inventory
             subject: com.ecommerce.inventory.inventory_reserved

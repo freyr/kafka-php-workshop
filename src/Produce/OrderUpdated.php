@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Produce;
 
-#[MessageName('order-updated')]
+#[MessageName('order.updated')]
 final class OrderUpdated extends Message
 {
     public static function create(string $orderId, string $status = 'PAID'): self

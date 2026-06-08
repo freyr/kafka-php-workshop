@@ -37,7 +37,7 @@ final class MessageProducerTest extends TestCase
         };
 
         $routing = new MessageRouting([
-            'text' => [
+            'text.plain' => [
                 'type' => 'json',
                 'topic' => 'demo-topic',
             ],

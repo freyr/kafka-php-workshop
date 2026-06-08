@@ -14,7 +14,7 @@ final class OrderCreatedTest extends TestCase
     {
         $message = OrderCreated::create('ord-123');
 
-        self::assertSame('order-created', (new MessageNameResolver())->nameOf($message));
+        self::assertSame('order.created', (new MessageNameResolver())->nameOf($message));
         self::assertSame('ord-123', $message->partitionKey());
 
         $payload = $message->payload;

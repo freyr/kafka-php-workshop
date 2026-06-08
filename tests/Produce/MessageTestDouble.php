@@ -7,7 +7,7 @@ namespace Workshop\Tests\Produce;
 use Workshop\Produce\Message;
 use Workshop\Produce\MessageName;
 
-#[MessageName('order-created')]
+#[MessageName('order.created')]
 final class MessageTestDouble extends Message
 {
     public static function create(string $id): self

@@ -27,14 +27,14 @@ final class SchemaVersionsCommand extends Command
 
     protected function configure(): void
     {
-        $this->addArgument('type', InputArgument::REQUIRED, 'order-created | payment-processed | inventory-reserved');
+        $this->addArgument('type', InputArgument::REQUIRED, 'order.created | payment.processed | inventory.reserved');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $type = Input::string($input, 'type');
         if (! in_array($type, $this->routing->names(), true)) {
-            $output->writeln('<error>Unknown event type. Use: order-created | payment-processed | inventory-reserved</error>');
+            $output->writeln('<error>Unknown event type. Use: order.created | payment.processed | inventory.reserved</error>');
 
             return Command::INVALID;
         }
