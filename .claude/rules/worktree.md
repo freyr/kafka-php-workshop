@@ -1,11 +1,5 @@
 # Worktree Workflow
-
-## Location and naming
-
-Create worktrees in the .claude/worktrees/ directory of the source repo. Folder name is `<branch-slug>`:
-- branch name as the rest, slugified: lowercase, `/` and `_` replaced with `-`, non-alphanumeric collapsed to `-`
-
-Example: branch `feature/r15-builder-mother` → `.claude/worktrees/feature-r15-builder-mother`.
+Prefer to always work within Worktree, use EnterWorktree tool to create and manage worktrees
 
 ## Mandatory post-create steps
 
@@ -21,9 +15,4 @@ Do not symlink, bind-mount, or copy `vendor/` from another checkout. Always `com
 
 ## Cleanup after merge
 
-From the origin checkout (not from inside the worktree):
-
-```bash
-git worktree remove <worktree-path>
-git fetch --prune
-```
+Use EnterWorktree and other build-ion tools to manage Worktrees lifecycle
