@@ -11,7 +11,7 @@ create: ## start kafka, schema registry, kafka-ui (detached); php is profile-gat
 	docker compose up -d
 destroy: ## stop containers and drop the kafka-data volume (wipes topics)
 	docker compose down -v
-recreate: destroy create ## destroy + create
+recreate: destroy create setup ## destroy + create + provision topics
 
 ##@ Topic provisioning
 setup: ## create every workshop topic across all blocks (idempotent)
