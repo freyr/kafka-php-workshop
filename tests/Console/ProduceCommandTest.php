@@ -63,6 +63,19 @@ final class ProduceCommandTest extends TestCase
         self::assertStringContainsString('--pool must be >= 1', $tester->getDisplay());
     }
 
+    public function testUnknownProfileIsRejected(): void
+    {
+        $tester = $this->tester();
+
+        $tester->execute([
+            '--profile' => 'turbo',
+        ]);
+
+        self::assertSame(Command::INVALID, $tester->getStatusCode());
+        self::assertStringContainsString('Unknown profile: turbo', $tester->getDisplay());
+        self::assertStringContainsString('idempotent | simple', $tester->getDisplay());
+    }
+
     private function tester(): CommandTester
     {
         $noop = new class implements BrokerProbe {

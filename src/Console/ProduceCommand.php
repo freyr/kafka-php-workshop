@@ -35,7 +35,8 @@ final class ProduceCommand extends Command
             ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'How many messages to produce, then stop. Omit to stream until interrupted (Ctrl+C / SIGTERM).')
             ->addOption('message-name', null, InputOption::VALUE_REQUIRED, 'Produce only this message (e.g. order.created); omit to pick a random message per send')
             ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool keys are drawn from; default: 8', '8')
-            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between sends; default: 10', '10');
+            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between sends; default: 10', '10')
+            ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Reliability profile: idempotent (default — enable.idempotence + acks=all + max.in.flight=5: ordered, no retry duplicates) | simple (untuned librdkafka defaults; can reorder or duplicate on retry)', 'idempotent');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -44,6 +45,20 @@ final class ProduceCommand extends Command
         $pin = Input::stringOrNull($input, 'message-name');
         $poolSize = Input::int($input, 'pool');
         $intervalMs = Input::int($input, 'interval');
+
+        // Map the two friendly demo values to the named producer profiles. Constrained
+        // to producer profiles on purpose — ProfileRegistry::get() is role-agnostic, so
+        // passing a raw name through would let a consumer profile build a producer.
+        $profile = match (Input::string($input, 'profile')) {
+            'idempotent' => 'producer.idempotent',
+            'simple' => 'producer.simple',
+            default => null,
+        };
+        if (null === $profile) {
+            $output->writeln(sprintf('<error>Unknown profile: %s</error> (use: idempotent | simple)', Input::string($input, 'profile')));
+
+            return Command::INVALID;
+        }
 
         if (null !== $pin && ! $this->catalog->has($pin)) {
             $output->writeln(sprintf('<error>Unknown message name: %s</error>', $pin));
@@ -65,7 +80,8 @@ final class ProduceCommand extends Command
         $names = null !== $pin ? [$pin] : $this->catalog->names();
         $orderIds = $this->orderPool($poolSize);
 
-        $producer = $this->producers->create('producer.idempotent', $this->serializer);
+        $producer = $this->producers->create($profile, $this->serializer);
+        $output->writeln(sprintf('<comment>producer profile=%s</comment>', $profile));
 
         $running = true;
         pcntl_async_signals(true);
