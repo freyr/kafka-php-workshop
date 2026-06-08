@@ -112,10 +112,11 @@ crashing. `order-created` prints a ready-to-paste lifecycle to drive the demo
 (`order-updated` → `order-cancelled` → `events:dispatch`), plus the caused
 `payment-processed` branch (shared `correlation_id`, linked `causation_id`).
 
-For Block 4, two commands inspect schema evolution against the registry:
+For Block 4, three commands drive schema evolution against the registry:
 
 ```sh
 bin/console schema:register <type> [schema-file]   # register a subject's schema (explicit, out-of-band production path → assigns the schema id)
+bin/console schema:register --all                  # register every routed subject's canonical schema (one-shot bootstrap for a fresh stack)
 bin/console schema:check    <type> <schema-file>   # is a candidate .avsc compatible with the latest? (CI gate; non-zero exit on fail)
 bin/console schema:versions <type>                 # list the registered version lineage [1, 2, …]
 ```
@@ -123,7 +124,8 @@ bin/console schema:versions <type>                 # list the registered version
 The production flow is **check → register → produce**: `schema:check` gates a
 candidate schema in CI, `schema:register` registers it (the registry assigns the
 id and enforces compatibility server-side), and only then can `events:produce`
-encode against it.
+encode against it. On a fresh stack, `schema:register --all` registers every
+subject up front so the producers work out of the box.
 
 `schema:check` is the pre-registration compatibility check (read-only). Demo
 schemas live in `schemas/orders/evolution/` — `OrderCreated-v2-compatible.avsc`

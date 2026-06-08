@@ -48,6 +48,33 @@ final class SchemaRegisterCommandTest extends TestCase
         self::assertStringContainsString('Cannot read schema file', $tester->getDisplay());
     }
 
+    public function testAllRejectsAnExplicitType(): void
+    {
+        // --all and a single type are mutually exclusive — rejected before any
+        // registry contact.
+        $tester = new CommandTester($this->command(new MessageRouting([])));
+        $tester->execute([
+            'type' => 'order-created',
+            '--all' => true,
+        ]);
+
+        self::assertSame(Command::INVALID, $tester->getStatusCode());
+        self::assertStringContainsString('pass it alone', $tester->getDisplay());
+    }
+
+    public function testAllOverEmptyRoutingRegistersNothing(): void
+    {
+        // No routed subjects → the loop never reaches the registry, so this runs
+        // without one and still reports success.
+        $tester = new CommandTester($this->command(new MessageRouting([])));
+        $tester->execute([
+            '--all' => true,
+        ]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode());
+        self::assertStringContainsString('all 0 subjects registered', $tester->getDisplay());
+    }
+
     private function command(MessageRouting $routing): SchemaRegisterCommand
     {
         $registry = (new \ReflectionClass(SchemaRegistryClient::class))->newInstanceWithoutConstructor();
