@@ -10,25 +10,29 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Workshop\Consume\DtoRouting;
+use Workshop\Consume\MessageDenormalizer;
+use Workshop\Consume\OrderCancelledDto;
+use Workshop\Consume\OrderCreatedDto;
+use Workshop\Consume\OrderUpdatedDto;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Runtime\RunLimits;
 use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
-use Workshop\Kernel\WorkshopEvent;
 
 #[AsCommand(
     name: 'events:dispatch',
-    description: 'Block 3/4: consume a topic that carries MULTIPLE event types and route each message to a per-type handler by event_type. The consumer side of multiple-event-types-per-topic (RecordNameStrategy) — e.g. order-created / order-updated / order-cancelled all on enet.ecommerce.orders.',
+    description: 'Block 3/4: consume a topic carrying MULTIPLE event types and route each message to a per-type handler by name, denormalizing the payload into a typed read-model DTO via the Symfony Serializer.',
 )]
 final class EventDispatchCommand extends Command
 {
-    use EventEnvelope;
-
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
         private readonly AvroEnvelopeSerializer $avro,
+        private readonly DtoRouting $dtoRouting,
+        private readonly MessageDenormalizer $denormalizer,
     ) {
         parent::__construct();
     }
@@ -51,7 +55,7 @@ final class EventDispatchCommand extends Command
         $named = null !== $groupOption;
         $group = $groupOption ?? sprintf('dispatch-%s-%d-%d', $topic, getmypid(), $timeoutMs);
 
-        $output->writeln(sprintf('<comment>dispatching %s · group=%s — routing by event_type</comment>', $topic, $group));
+        $output->writeln(sprintf('<comment>dispatching %s · group=%s — routing by name</comment>', $topic, $group));
 
         /** @var array<string, int> $tally */
         $tally = [
@@ -59,6 +63,7 @@ final class EventDispatchCommand extends Command
             'updated' => 0,
             'cancelled' => 0,
             'other' => 0,
+            'malformed' => 0,
             'skipped' => 0,
         ];
 
@@ -70,28 +75,40 @@ final class EventDispatchCommand extends Command
             } catch (\Throwable) {
                 $event = null;
             }
-            if (null === $event) {
+            if (! is_array($event)) {
                 ++$tally['skipped'];
 
                 return;
             }
 
-            $metadata = $this->metadataOf($event);
-            $eventType = $this->string($metadata, 'event_type');
-            $orderId = $this->digString($event, 'order_id');
-            if ('' === $orderId) {
-                $orderId = $this->string($metadata, 'aggregate_id');
-            }
-            if ('' === $orderId) {
-                $orderId = '?';
+            $name = $this->nameOf($event);
+            $dtoClass = '' === $name ? null : $this->dtoRouting->for($name);
+            if (null === $dtoClass) {
+                $this->onUnhandled($output, $name, $tally);
+
+                return;
             }
 
-            // Dispatch by type — the heart of a multi-type-topic consumer.
+            $payload = $event;
+            unset($payload['metadata']);
+
+            try {
+                $dto = $this->denormalizer->denormalize($payload, $dtoClass);
+            } catch (\Throwable $e) {
+                // Routed to a DTO, but the payload does not fit it (partial schema
+                // evolution, a replayed old message, a producer bug). Tolerate it —
+                // a shared-topic consumer must not die on one bad record.
+                $output->writeln(sprintf('  <error>! MALFORMED</error> %s: %s', $name, $e->getMessage()));
+                ++$tally['malformed'];
+
+                return;
+            }
+
             match (true) {
-                $this->isType($eventType, WorkshopEvent::OrderCreated) => $this->onCreated($output, $orderId, $event, $tally),
-                $this->isType($eventType, WorkshopEvent::OrderUpdated) => $this->onUpdated($output, $orderId, $event, $tally),
-                $this->isType($eventType, WorkshopEvent::OrderCancelled) => $this->onCancelled($output, $orderId, $event, $tally),
-                default => $this->onUnhandled($output, $eventType, $tally),
+                $dto instanceof OrderCreatedDto => $this->onCreated($output, $dto, $tally),
+                $dto instanceof OrderUpdatedDto => $this->onUpdated($output, $dto, $tally),
+                $dto instanceof OrderCancelledDto => $this->onCancelled($output, $dto, $tally),
+                default => $this->onUnhandled($output, $name, $tally),
             };
         };
 
@@ -105,65 +122,77 @@ final class EventDispatchCommand extends Command
 
         $output->writeln('');
         $output->writeln(sprintf(
-            'dispatched: created=%d updated=%d cancelled=%d · unhandled=%d skipped(non-AVRO)=%d',
+            'dispatched: created=%d updated=%d cancelled=%d · unhandled=%d malformed=%d skipped(non-AVRO)=%d',
             $tally['created'],
             $tally['updated'],
             $tally['cancelled'],
             $tally['other'],
+            $tally['malformed'],
             $tally['skipped'],
         ));
 
         return Command::SUCCESS;
     }
 
-    private function isType(string $eventType, WorkshopEvent $candidate): bool
+    /**
+     * @param array<string, mixed> $event
+     */
+    private function nameOf(array $event): string
     {
-        return $eventType === $candidate->eventType();
+        $metadata = is_array($event['metadata'] ?? null) ? $event['metadata'] : [];
+        $name = $metadata['name'] ?? null;
+
+        return is_string($name) ? $name : '';
     }
 
     /**
-     * @param array<string, mixed> $event
-     * @param array<string, int>   $tally
+     * @param array<string, int> $tally
      */
-    private function onCreated(OutputInterface $output, string $orderId, array $event, array &$tally): void
+    private function onCreated(OutputInterface $output, OrderCreatedDto $dto, array &$tally): void
     {
-        $customer = $this->digString($event, 'customer', 'display_name');
-        $total = $this->digInt($event, 'totals', 'total', 'amount_cents');
-        $output->writeln(sprintf('  <info>▶ OPEN</info>   order=%s — new order for %s (total %d)', $orderId, '' !== $customer ? $customer : '?', $total));
+        $output->writeln(sprintf(
+            '  <info>▶ OPEN</info>   order=%s — new order for %s (total %d)',
+            $dto->orderId,
+            '' !== $dto->customer->displayName ? $dto->customer->displayName : '?',
+            $dto->totals->total->amountCents,
+        ));
         ++$tally['created'];
     }
 
     /**
-     * @param array<string, mixed> $event
-     * @param array<string, int>   $tally
+     * @param array<string, int> $tally
      */
-    private function onUpdated(OutputInterface $output, string $orderId, array $event, array &$tally): void
+    private function onUpdated(OutputInterface $output, OrderUpdatedDto $dto, array &$tally): void
     {
-        $from = $this->digString($event, 'previous_status') ?: '?';
-        $to = $this->digString($event, 'status') ?: '?';
-        $output->writeln(sprintf('  <comment>✎ UPDATE</comment> order=%s — status %s → %s', $orderId, $from, $to));
+        $output->writeln(sprintf(
+            '  <comment>✎ UPDATE</comment> order=%s — status %s → %s',
+            $dto->orderId,
+            $dto->previousStatus ?? '?',
+            '' !== $dto->status ? $dto->status : '?',
+        ));
         ++$tally['updated'];
     }
 
     /**
-     * @param array<string, mixed> $event
-     * @param array<string, int>   $tally
+     * @param array<string, int> $tally
      */
-    private function onCancelled(OutputInterface $output, string $orderId, array $event, array &$tally): void
+    private function onCancelled(OutputInterface $output, OrderCancelledDto $dto, array &$tally): void
     {
-        $reason = $this->digString($event, 'reason') ?: '?';
-        $output->writeln(sprintf('  <error>✗ CANCEL</error> order=%s — reason %s', $orderId, $reason));
+        $output->writeln(sprintf(
+            '  <error>✗ CANCEL</error> order=%s — reason %s',
+            $dto->orderId,
+            '' !== $dto->reason ? $dto->reason : '?',
+        ));
         ++$tally['cancelled'];
     }
 
     /**
      * @param array<string, int> $tally
      */
-    private function onUnhandled(OutputInterface $output, string $eventType, array &$tally): void
+    private function onUnhandled(OutputInterface $output, string $name, array &$tally): void
     {
-        // Forward-compatibility: a consumer ignores types it does not handle
-        // rather than failing — new event types can ship without breaking it.
-        $output->writeln(sprintf('  <comment>… ignore</comment> unhandled type %s', '' === $eventType ? '<none>' : $eventType));
+        // Forward-compatibility: ignore types we do not consume rather than fail.
+        $output->writeln(sprintf('  <comment>… ignore</comment> unhandled message %s', '' === $name ? '<none>' : $name));
         ++$tally['other'];
     }
 }

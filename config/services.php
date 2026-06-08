@@ -29,12 +29,11 @@ return function (ContainerConfigurator $c): void {
     $services->load('Workshop\\Kernel\\', __DIR__ . '/../src/Kernel/')
         ->exclude([
             __DIR__ . '/../src/Kernel/Topics.php',
-            __DIR__ . '/../src/Kernel/WorkshopEvent.php',
         ]);
 
     // The pure php-rdkafka layer (Blocks 1-3). Concept-named sub-namespaces under
     // src/Kafka/ become autowired services; the value objects and enums are
-    // constructed, never injected, so they are excluded like Topics/WorkshopEvent.
+    // constructed, never injected, so they are excluded like Topics.
     $services->load('Workshop\\Kafka\\', __DIR__ . '/../src/Kafka/')
         ->exclude([
             __DIR__ . '/../src/Kafka/Config/ClientRole.php',
@@ -52,6 +51,19 @@ return function (ContainerConfigurator $c): void {
         ]);
 
     $services->load('Workshop\\Console\\', __DIR__ . '/../src/Console/');
+
+    // Produce-side message routing — name => {topic, subject, schema}. Messages
+    // themselves are value objects (constructed with data), never services, so
+    // only the routing table is registered.
+    $services->set(Workshop\Produce\MessageRouting::class)
+        ->arg('$routes', require __DIR__ . '/produce.php');
+
+    // Consume-side routing + the Symfony-Serializer-backed denormalizer. DTOs are
+    // value objects, never services — only the routing table and the denormalizer
+    // are registered.
+    $services->set(Workshop\Consume\DtoRouting::class)
+        ->arg('$map', require __DIR__ . '/consume.php');
+    $services->set(Workshop\Consume\MessageDenormalizer::class);
 
     // AvroEventSerializer takes the Schema Registry URL — bind the named arg.
     $services->set(AvroEventSerializer::class)

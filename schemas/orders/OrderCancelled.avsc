@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "OrderCancelled",
-  "namespace": "com.ecommerce.orders.v1",
+  "namespace": "com.ecommerce.orders",
   "doc": "Published when an order is cancelled. Shares the enet.ecommerce.orders topic with OrderCreated/OrderUpdated — multiple event types per topic, each its own Schema Registry subject under RecordNameStrategy. Self-contained schema — EventMetadata and Money are inlined so it registers as a single subject; canonical copies live under schemas/common/.",
   "fields": [
     {
@@ -9,18 +9,12 @@
       "type": {
         "type": "record",
         "name": "EventMetadata",
-        "namespace": "com.ecommerce.common.v1",
-        "doc": "Standard envelope metadata carried by every event.",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
         "fields": [
           {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
-          {"name": "event_type", "type": "string", "doc": "Fully-qualified type, e.g. ecommerce.orders.v1.OrderCancelled."},
-          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the business action happened (UTC epoch millis)."},
-          {"name": "source_service", "type": "string"},
-          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Ties all events in one business workflow together."},
-          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null, "doc": "event_id of the event that directly caused this one."},
-          {"name": "tenant_id", "type": "string", "doc": "Critical for SaaS isolation/routing."},
-          {"name": "aggregate_id", "type": "string", "doc": "Entity this event belongs to; typically the message key."},
-          {"name": "schema_version", "type": "int", "default": 1}
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
+          {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
         ]
       }
     },
@@ -32,7 +26,7 @@
       "type": ["null", {
         "type": "record",
         "name": "Money",
-        "namespace": "com.ecommerce.common.v1",
+        "namespace": "com.ecommerce.common",
         "doc": "Money as integer minor units + currency — avoids float and AVRO decimal woes.",
         "fields": [
           {"name": "amount_cents", "type": "long"},

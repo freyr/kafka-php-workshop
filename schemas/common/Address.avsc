@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "Address",
-  "namespace": "com.ecommerce.common.v1",
+  "namespace": "com.ecommerce.common",
   "doc": "Postal address value object. Reference copy — inlined into event schemas. Note state is an optional field with a null default (evolution-safe).",
   "fields": [
     {"name": "street", "type": "string"},

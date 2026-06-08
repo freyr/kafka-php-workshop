@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kernel\SchemaRegistryClient;
-use Workshop\Kernel\WorkshopEvent;
+use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
     name: 'schema:check',
@@ -20,6 +20,7 @@ final class SchemaCheckCommand extends Command
 {
     public function __construct(
         private readonly SchemaRegistryClient $registry,
+        private readonly MessageRouting $routing,
     ) {
         parent::__construct();
     }
@@ -33,8 +34,8 @@ final class SchemaCheckCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
-        if (null === $type) {
+        $type = Input::string($input, 'type');
+        if (! in_array($type, $this->routing->names(), true)) {
             $output->writeln('<error>Unknown event type. Use: order-created | payment-processed | inventory-reserved</error>');
 
             return Command::INVALID;
@@ -54,14 +55,14 @@ final class SchemaCheckCommand extends Command
             return Command::INVALID;
         }
 
-        $subject = $type->subject();
+        $subject = $this->routing->for($type)->subject;
         $result = $this->registry->checkCompatibility($subject, $schemaJson);
 
         $output->writeln("subject <info>{$subject}</info> ← {$file}");
 
         if ($result['firstVersion']) {
             $output->writeln('  <comment>no version registered yet</comment> — first schema is always accepted, nothing to check.');
-            $output->writeln('  Register it by producing once: <comment>bin/console events:produce ' . $type->value . '</comment>');
+            $output->writeln('  Register it by producing once: <comment>bin/console events:produce ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }

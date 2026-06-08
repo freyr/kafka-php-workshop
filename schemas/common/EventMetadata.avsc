@@ -1,17 +1,11 @@
 {
   "type": "record",
   "name": "EventMetadata",
-  "namespace": "com.ecommerce.common.v1",
-  "doc": "Canonical envelope metadata. Reference copy — the event schemas under schemas/orders|payments|inventory inline this record so each registers as one self-contained subject.",
+  "namespace": "com.ecommerce.common",
+  "doc": "Canonical minimal envelope metadata. Reference copy — the event schemas inline this record so each registers as one self-contained subject.",
   "fields": [
     {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
-    {"name": "event_type", "type": "string", "doc": "Fully-qualified type, e.g. ecommerce.orders.v1.OrderCreated."},
-    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the business action happened (UTC epoch millis)."},
-    {"name": "source_service", "type": "string"},
-    {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Ties all events in one workflow together."},
-    {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null, "doc": "event_id of the event that directly caused this one."},
-    {"name": "tenant_id", "type": "string", "doc": "Critical for SaaS isolation/routing."},
-    {"name": "aggregate_id", "type": "string", "doc": "Entity this event belongs to; typically the message key."},
-    {"name": "schema_version", "type": "int", "default": 1}
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
+    {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
   ]
 }

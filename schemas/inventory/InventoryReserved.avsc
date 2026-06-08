@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "InventoryReserved",
-  "namespace": "com.ecommerce.inventory.v1",
+  "namespace": "com.ecommerce.inventory",
   "doc": "Published when stock has been successfully reserved for an order. Self-contained schema.",
   "fields": [
     {
@@ -9,18 +9,12 @@
       "type": {
         "type": "record",
         "name": "EventMetadata",
-        "namespace": "com.ecommerce.common.v1",
-        "doc": "Standard envelope metadata carried by every event.",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
         "fields": [
-          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
-          {"name": "event_type", "type": "string"},
-          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
-          {"name": "source_service", "type": "string"},
-          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}},
-          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
-          {"name": "tenant_id", "type": "string"},
-          {"name": "aggregate_id", "type": "string"},
-          {"name": "schema_version", "type": "int", "default": 1}
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
+          {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
         ]
       }
     },
@@ -33,7 +27,7 @@
         "items": {
           "type": "record",
           "name": "ReservedItem",
-          "namespace": "com.ecommerce.inventory.v1",
+          "namespace": "com.ecommerce.inventory",
           "fields": [
             {"name": "product_id", "type": "string"},
             {"name": "sku", "type": "string"},

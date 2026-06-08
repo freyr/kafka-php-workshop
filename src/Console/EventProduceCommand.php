@@ -10,23 +10,27 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Uid\Uuid;
 use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kafka\Serde\AvroPayload;
-use Workshop\Kernel\EventFactory;
-use Workshop\Kernel\WorkshopEvent;
+use Workshop\Produce\InventoryReserved;
+use Workshop\Produce\Message;
+use Workshop\Produce\MessageRouting;
+use Workshop\Produce\OrderCancelled;
+use Workshop\Produce\OrderCreated;
+use Workshop\Produce\OrderUpdated;
+use Workshop\Produce\PaymentProcessed;
 
 #[AsCommand(
     name: 'events:produce',
-    description: 'Build an enveloped event, AVRO-encode it against Schema Registry, and produce it to its topic keyed by aggregate_id.',
+    description: 'Build a typed Message, AVRO-encode its envelope against Schema Registry, and produce it to its routed topic keyed by partitionKey.',
 )]
 final class EventProduceCommand extends Command
 {
-    use EventEnvelope;
-
     public function __construct(
         private readonly ProducerFactory $producers,
-        private readonly EventFactory $events,
+        private readonly MessageRouting $routing,
         private readonly AvroEnvelopeSerializer $avro,
     ) {
         parent::__construct();
@@ -36,64 +40,57 @@ final class EventProduceCommand extends Command
     {
         $this
             ->addArgument('type', InputArgument::REQUIRED, 'order-created | order-updated | order-cancelled | payment-processed | inventory-reserved')
-            ->addOption('order-id', null, InputOption::VALUE_REQUIRED, 'Order id / aggregate id (default: generated)')
-            ->addOption('correlation-id', null, InputOption::VALUE_REQUIRED, 'Continue an existing workflow (default: generated)')
-            ->addOption('causation-id', null, InputOption::VALUE_REQUIRED, 'event_id of the event that caused this one')
+            ->addOption('order-id', null, InputOption::VALUE_REQUIRED, 'Order id / partition key (default: generated)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'For payment-processed: SUCCEEDED (default) or FAILED; for order-updated: the new status (default PAID)')
             ->addOption('reason', null, InputOption::VALUE_REQUIRED, 'For order-cancelled: cancellation reason (default CUSTOMER_REQUEST)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
-        if (null === $type) {
+        $type = Input::string($input, 'type');
+        $orderId = Input::stringOrNull($input, 'order-id') ?? 'ord-' . substr(Uuid::v4()->toRfc4122(), 0, 8);
+        $status = Input::stringOrNull($input, 'status');
+        $reason = Input::stringOrNull($input, 'reason');
+
+        $message = $this->message($type, $orderId, $status, $reason);
+        if (null === $message) {
             $output->writeln('<error>Unknown event type. Use: order-created | order-updated | order-cancelled | payment-processed | inventory-reserved</error>');
 
             return Command::INVALID;
         }
 
-        $opts = array_filter([
-            'order_id' => $input->getOption('order-id'),
-            'correlation_id' => $input->getOption('correlation-id'),
-            'causation_id' => $input->getOption('causation-id'),
-            'status' => $input->getOption('status'),
-            'reason' => $input->getOption('reason'),
-        ], static fn (mixed $v): bool => null !== $v);
-
-        /** @var array<string, string> $opts */
-        $record = $this->events->build($type, $opts);
-        $metadata = $this->metadataOf($record);
-        $aggregateId = $this->string($metadata, 'aggregate_id');
-
-        $payload = new AvroPayload($type->subject(), $type->schemaJson(), $record);
+        $route = $this->routing->for($message->name());
+        $payload = new AvroPayload($route->subject, $route->schemaJson(), $message->envelope());
 
         $producer = $this->producers->create('producer.idempotent', $this->avro);
-        $producer->keyed($type->topic(), $aggregateId, $payload);
+        $producer->keyed($route->topic, $message->partitionKey(), $payload);
         $producer->close();
 
-        $causation = $this->string($metadata, 'causation_id');
-        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $type->eventType(), $type->topic(), $type->subject()));
-        $output->writeln('  event_id       = ' . $this->string($metadata, 'event_id'));
-        $output->writeln('  correlation_id = ' . $this->string($metadata, 'correlation_id'));
-        $output->writeln('  causation_id   = ' . ('' !== $causation ? $causation : '<null>'));
-        $output->writeln('  aggregate_id   = ' . $aggregateId . ' (message key)');
+        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $message->name(), $route->topic, $route->subject));
+        $output->writeln('  key = ' . $message->partitionKey() . ' (message key / partition key)');
 
-        if (WorkshopEvent::OrderCreated === $type) {
-            $correlationId = $this->string($metadata, 'correlation_id');
+        if ($message instanceof OrderCreated) {
             $output->writeln('');
             $output->writeln('<comment>continue this order\'s lifecycle on the SAME topic (multiple event types, one topic):</comment>');
-            $output->writeln(sprintf('  events:produce order-updated   --order-id %s --correlation-id %s --status PAID', $aggregateId, $correlationId));
-            $output->writeln(sprintf('  events:produce order-cancelled --order-id %s --correlation-id %s --reason OUT_OF_STOCK', $aggregateId, $correlationId));
-            $output->writeln('  events:dispatch enet.ecommerce.orders -m 3        # consumer dispatches by event_type');
+            $output->writeln(sprintf('  events:produce order-updated   --order-id %s --status PAID', $orderId));
+            $output->writeln(sprintf('  events:produce order-cancelled --order-id %s --reason OUT_OF_STOCK', $orderId));
+            $output->writeln('  events:dispatch enet.ecommerce.orders -m 3        # consumer dispatches by name');
             $output->writeln('<comment>or branch into payment:</comment>');
-            $output->writeln(sprintf(
-                '  events:produce payment-processed --order-id %s --correlation-id %s --causation-id %s',
-                $aggregateId,
-                $correlationId,
-                $this->string($metadata, 'event_id'),
-            ));
+            $output->writeln(sprintf('  events:produce payment-processed --order-id %s', $orderId));
         }
 
         return Command::SUCCESS;
+    }
+
+    private function message(string $type, string $orderId, ?string $status, ?string $reason): ?Message
+    {
+        return match ($type) {
+            'order-created' => new OrderCreated($orderId),
+            'order-updated' => new OrderUpdated($orderId, $status ?? 'PAID'),
+            'order-cancelled' => new OrderCancelled($orderId, $reason ?? 'CUSTOMER_REQUEST'),
+            'payment-processed' => new PaymentProcessed($orderId, $status ?? 'SUCCEEDED'),
+            'inventory-reserved' => new InventoryReserved($orderId),
+            default => null,
+        };
     }
 }

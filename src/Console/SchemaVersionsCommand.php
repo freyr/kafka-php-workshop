@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Kernel\SchemaRegistryClient;
-use Workshop\Kernel\WorkshopEvent;
+use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
     name: 'schema:versions',
@@ -20,6 +20,7 @@ final class SchemaVersionsCommand extends Command
 {
     public function __construct(
         private readonly SchemaRegistryClient $registry,
+        private readonly MessageRouting $routing,
     ) {
         parent::__construct();
     }
@@ -31,19 +32,19 @@ final class SchemaVersionsCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $type = WorkshopEvent::tryFrom(Input::string($input, 'type'));
-        if (null === $type) {
+        $type = Input::string($input, 'type');
+        if (! in_array($type, $this->routing->names(), true)) {
             $output->writeln('<error>Unknown event type. Use: order-created | payment-processed | inventory-reserved</error>');
 
             return Command::INVALID;
         }
 
-        $subject = $type->subject();
+        $subject = $this->routing->for($type)->subject;
         $versions = $this->registry->versions($subject);
 
         if ([] === $versions) {
             $output->writeln("subject <info>{$subject}</info>: <comment>not registered yet</comment>");
-            $output->writeln('Register it by producing once: <comment>bin/console events:produce ' . $type->value . '</comment>');
+            $output->writeln('Register it by producing once: <comment>bin/console events:produce ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }
