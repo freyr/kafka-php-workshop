@@ -15,6 +15,7 @@ use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
 use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kafka\Serde\AvroEventSerializer;
+use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
 
 /**
@@ -37,7 +38,7 @@ final class EventProduceCommandTest extends TestCase
         $routing = new MessageRouting([]);
         $avro = new AvroEnvelopeSerializer(new AvroEventSerializer('http://registry.test'));
 
-        $tester = new CommandTester(new EventProduceCommand($factory, $routing, $avro));
+        $tester = new CommandTester(new EventProduceCommand($factory, $routing, $avro, new MessageNameResolver()));
         $tester->execute([
             'type' => 'no-such-type',
         ]);

@@ -22,7 +22,7 @@ final class MessageTest extends TestCase
     {
         $message = new MessageTestDouble('ord-1');
 
-        $envelope = $message->envelope();
+        $envelope = $message->envelope('order-created');
 
         self::assertSame([
             'order_id' => 'ord-1',
@@ -43,7 +43,7 @@ final class MessageTest extends TestCase
         self::assertInstanceOf(SerializableMessage::class, $message);
     }
 
-    public function testNameThrowsWhenAttributeMissing(): void
+    public function testEnvelopeRejectsAReservedMetadataKey(): void
     {
         $message = new class extends Message {
             public function partitionKey(): string
@@ -53,11 +53,13 @@ final class MessageTest extends TestCase
 
             public function toPayload(): array
             {
-                return [];
+                return [
+                    'metadata' => 'oops',
+                ];
             }
         };
 
         $this->expectException(\LogicException::class);
-        $message->name();
+        $message->envelope('order-created');
     }
 }

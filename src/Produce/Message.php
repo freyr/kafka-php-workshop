@@ -9,9 +9,11 @@ use Symfony\Component\Uid\Uuid;
 /**
  * Base for every producible message. It supplies the envelope autonomously:
  * a UUIDv7 event_id and a UTC epoch-millis timestamp are generated at
- * construction, and the name is read from the concrete class's #[MessageName]
- * attribute. Concrete messages only describe their business payload (toPayload)
- * and their Kafka partition key (partitionKey).
+ * construction. The wire name is NOT read here — it is resolved once per class
+ * from the concrete class's #[MessageName] attribute by MessageNameResolver at
+ * the serialization stage, and passed into envelope(). Concrete messages only
+ * describe their business payload (toPayload) and their Kafka partition key
+ * (partitionKey).
  */
 abstract class Message implements SerializableMessage
 {
@@ -31,25 +33,13 @@ abstract class Message implements SerializableMessage
     abstract public function partitionKey(): string;
 
     /**
-     * The wire name, read from the concrete class's #[MessageName] attribute.
-     */
-    final public function name(): string
-    {
-        $attributes = (new \ReflectionClass($this))->getAttributes(MessageName::class);
-        if ([] === $attributes) {
-            throw new \LogicException(sprintf('%s is missing the #[MessageName] attribute.', static::class));
-        }
-
-        return $attributes[0]->newInstance()->value;
-    }
-
-    /**
      * The full enveloped record that goes on the wire: a minimal metadata record
-     * plus the flattened business payload.
+     * plus the flattened business payload. The wire name is supplied by the
+     * caller (resolved once via MessageNameResolver), not re-derived here.
      *
      * @return array<string, mixed>
      */
-    final public function envelope(): array
+    final public function envelope(string $name): array
     {
         $payload = $this->toPayload();
         if (array_key_exists('metadata', $payload)) {
@@ -60,7 +50,7 @@ abstract class Message implements SerializableMessage
             'metadata' => [
                 'event_id' => $this->eventId,
                 'timestamp' => $this->timestamp,
-                'name' => $this->name(),
+                'name' => $name,
             ],
             ...$payload,
         ];

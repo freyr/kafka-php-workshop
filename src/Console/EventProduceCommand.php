@@ -16,6 +16,7 @@ use Workshop\Kafka\Serde\AvroEnvelopeSerializer;
 use Workshop\Kafka\Serde\AvroPayload;
 use Workshop\Produce\InventoryReserved;
 use Workshop\Produce\Message;
+use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
 use Workshop\Produce\OrderCancelled;
 use Workshop\Produce\OrderCreated;
@@ -32,6 +33,7 @@ final class EventProduceCommand extends Command
         private readonly ProducerFactory $producers,
         private readonly MessageRouting $routing,
         private readonly AvroEnvelopeSerializer $avro,
+        private readonly MessageNameResolver $names,
     ) {
         parent::__construct();
     }
@@ -59,14 +61,15 @@ final class EventProduceCommand extends Command
             return Command::INVALID;
         }
 
-        $route = $this->routing->for($message->name());
-        $payload = new AvroPayload($route->subject, $route->schemaJson(), $message->envelope());
+        $name = $this->names->nameOf($message);
+        $route = $this->routing->for($name);
+        $payload = new AvroPayload($route->subject, $route->schemaJson(), $message->envelope($name));
 
         $producer = $this->producers->create('producer.idempotent', $this->avro);
         $producer->keyed($route->topic, $message->partitionKey(), $payload);
         $producer->close();
 
-        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $message->name(), $route->topic, $route->subject));
+        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $name, $route->topic, $route->subject));
         $output->writeln('  key = ' . $message->partitionKey() . ' (message key / partition key)');
 
         if ($message instanceof OrderCreated) {

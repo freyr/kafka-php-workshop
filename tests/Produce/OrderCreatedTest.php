@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workshop\Tests\Produce;
 
 use PHPUnit\Framework\TestCase;
+use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\OrderCreated;
 
 final class OrderCreatedTest extends TestCase
@@ -13,7 +14,7 @@ final class OrderCreatedTest extends TestCase
     {
         $message = new OrderCreated('ord-123');
 
-        self::assertSame('order-created', $message->name());
+        self::assertSame('order-created', (new MessageNameResolver())->nameOf($message));
         self::assertSame('ord-123', $message->partitionKey());
 
         $payload = $message->toPayload();
