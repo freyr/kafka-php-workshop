@@ -120,11 +120,6 @@ services:
         arguments:
             $http: '@schema_registry.http_client'
 
-    # ConfigStatsCommand (Block 8 raw-rdkafka deep dive) needs the broker list.
-    Workshop\Console\ConfigStatsCommand:
-        arguments:
-            $brokers: '%kafka.brokers%'
-
     # The pure-rdkafka ConfBuilder needs the broker list as a string; the broker
     # probe interface resolves to its TCP implementation.
     Workshop\Kafka\Config\ConfBuilder:
