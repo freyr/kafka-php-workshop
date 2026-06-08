@@ -46,7 +46,7 @@ services:
     Workshop\Produce\MessageNameResolver: ~
 
     # The Schema Registry URL can't be type-hint-autowired — bind it by name.
-    Workshop\Kafka\Serde\AvroEventSerializer:
+    Workshop\Kafka\Serde\AvroEnvelopeSerializer:
         arguments:
             $schemaRegistryUrl: '%schema_registry.url%'
 

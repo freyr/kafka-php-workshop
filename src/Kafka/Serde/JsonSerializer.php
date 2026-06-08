@@ -13,8 +13,8 @@ use Symfony\Component\Serializer\Serializer;
 
 /**
  * The Block 1-2 serializer: JSON on the wire via the native Symfony Serializer,
- * the structured step up from the raw StringSerializer and the conceptual warm-up
- * for the AVRO envelope in Block 3. A typed message object is normalized to an
+ * the structured warm-up for the AVRO envelope in Block 3. A typed message object
+ * is normalized to an
  * array (camelCase properties → lower_snake keys via the name converter) and
  * JSON-encoded; decode reverses the encoding back to a plain associative array.
  * It mirrors the consume-side MessageDenormalizer's serializer setup so both
