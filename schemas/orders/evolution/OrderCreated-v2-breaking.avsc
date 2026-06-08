@@ -1,26 +1,20 @@
 {
   "type": "record",
   "name": "OrderCreated",
-  "namespace": "com.ecommerce.orders.v1",
-  "doc": "Block 4 demo — BROKEN v2 evolution of OrderCreated. Adds ONE REQUIRED field (coupon_code) with NO default. This breaks BACKWARD compatibility: a v2 reader cannot read v1 data, which has no coupon_code and no default to fall back on. `schema:check` against enet.ecommerce.orders-value should report NOT COMPATIBLE, and registration would be rejected with 409.",
+  "namespace": "com.ecommerce.orders",
+  "doc": "Block 4 demo — BROKEN v2 evolution of OrderCreated. Adds ONE REQUIRED field (coupon_code) with NO default. This breaks BACKWARD compatibility: a v2 reader cannot read v1 data, which has no coupon_code and no default to fall back on. `schema:check order-created schemas/orders/evolution/OrderCreated-v2-breaking.avsc` (subject com.ecommerce.orders.order_created) should report NOT COMPATIBLE, and registration would be rejected with 409.",
   "fields": [
     {
       "name": "metadata",
       "type": {
         "type": "record",
         "name": "EventMetadata",
-        "namespace": "com.ecommerce.common.v1",
-        "doc": "Standard envelope metadata carried by every event.",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
         "fields": [
           {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
-          {"name": "event_type", "type": "string", "doc": "Fully-qualified type, e.g. ecommerce.orders.v1.OrderCreated."},
-          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the business action happened (UTC epoch millis)."},
-          {"name": "source_service", "type": "string"},
-          {"name": "correlation_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Ties all events in one business workflow together."},
-          {"name": "causation_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null, "doc": "event_id of the event that directly caused this one."},
-          {"name": "tenant_id", "type": "string", "doc": "Critical for SaaS isolation/routing."},
-          {"name": "aggregate_id", "type": "string", "doc": "Entity this event belongs to; typically the message key."},
-          {"name": "schema_version", "type": "int", "default": 1}
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."},
+          {"name": "name", "type": "string", "doc": "Wire name, e.g. order-created."}
         ]
       }
     },
@@ -30,7 +24,7 @@
       "type": {
         "type": "record",
         "name": "CustomerReference",
-        "namespace": "com.ecommerce.common.v1",
+        "namespace": "com.ecommerce.common",
         "doc": "Curated customer data — not the full profile.",
         "fields": [
           {"name": "customer_id", "type": "string"},
@@ -46,7 +40,7 @@
         "items": {
           "type": "record",
           "name": "OrderItem",
-          "namespace": "com.ecommerce.orders.v1",
+          "namespace": "com.ecommerce.orders",
           "fields": [
             {"name": "product_id", "type": "string"},
             {"name": "sku", "type": "string"},
@@ -57,7 +51,7 @@
               "type": {
                 "type": "record",
                 "name": "Money",
-                "namespace": "com.ecommerce.common.v1",
+                "namespace": "com.ecommerce.common",
                 "doc": "Money as integer minor units + currency — avoids float and AVRO decimal woes.",
                 "fields": [
                   {"name": "amount_cents", "type": "long"},
@@ -65,7 +59,7 @@
                 ]
               }
             },
-            {"name": "line_total", "type": "com.ecommerce.common.v1.Money"}
+            {"name": "line_total", "type": "com.ecommerce.common.Money"}
           ]
         }
       }
@@ -75,7 +69,7 @@
       "type": {
         "type": "record",
         "name": "Address",
-        "namespace": "com.ecommerce.common.v1",
+        "namespace": "com.ecommerce.common",
         "fields": [
           {"name": "street", "type": "string"},
           {"name": "city", "type": "string"},
@@ -90,12 +84,12 @@
       "type": {
         "type": "record",
         "name": "OrderTotals",
-        "namespace": "com.ecommerce.orders.v1",
+        "namespace": "com.ecommerce.orders",
         "fields": [
-          {"name": "subtotal", "type": "com.ecommerce.common.v1.Money"},
-          {"name": "shipping_cost", "type": "com.ecommerce.common.v1.Money"},
-          {"name": "tax", "type": "com.ecommerce.common.v1.Money"},
-          {"name": "total", "type": "com.ecommerce.common.v1.Money"}
+          {"name": "subtotal", "type": "com.ecommerce.common.Money"},
+          {"name": "shipping_cost", "type": "com.ecommerce.common.Money"},
+          {"name": "tax", "type": "com.ecommerce.common.Money"},
+          {"name": "total", "type": "com.ecommerce.common.Money"}
         ]
       }
     },
