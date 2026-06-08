@@ -6,3 +6,4 @@ workshop:
         order.created: Workshop\Consume\OrderCreatedDto
         order.updated: Workshop\Consume\OrderUpdatedDto
         order.cancelled: Workshop\Consume\OrderCancelledDto
+        order.audited: Workshop\Consume\OrderAuditedDto

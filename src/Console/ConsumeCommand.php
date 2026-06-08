@@ -14,6 +14,7 @@ use Workshop\Consume\ConsumedMessage;
 use Workshop\Consume\ConsumerBus;
 use Workshop\Consume\IdempotencyMiddleware;
 use Workshop\Consume\MessageInterpreter;
+use Workshop\Consume\OrderAuditedDto;
 use Workshop\Consume\OrderCancelledDto;
 use Workshop\Consume\OrderCreatedDto;
 use Workshop\Consume\OrderUpdatedDto;
@@ -220,7 +221,8 @@ final class ConsumeCommand extends Command
         $orderId = match (true) {
             $message->dto instanceof OrderCreatedDto,
             $message->dto instanceof OrderUpdatedDto,
-            $message->dto instanceof OrderCancelledDto => $message->dto->orderId,
+            $message->dto instanceof OrderCancelledDto,
+            $message->dto instanceof OrderAuditedDto => $message->dto->orderId,
             default => '?',
         };
 
