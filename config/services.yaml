@@ -30,6 +30,7 @@ services:
             - '../src/Kafka/Runtime/CommitPolicy.php'
             - '../src/Kafka/Runtime/RunLimits.php'
             - '../src/Kafka/Client/MessageProducer.php'
+            - '../src/Kafka/Client/MessageConsumer.php'
             - '../src/Kafka/Admin/TopicAdmin.php'
 
     Workshop\Console\:

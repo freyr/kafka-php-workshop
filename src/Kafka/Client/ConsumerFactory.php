@@ -13,11 +13,11 @@ use Workshop\Kafka\Config\KafkaProfile;
 use Workshop\Kafka\Config\ProfileRegistry;
 
 /**
- * Builds a configured \RdKafka\KafkaConsumer from a named profile and a group id.
- * Returns the raw consumer rather than a pre-bound runner: construction (this
- * factory) and the consume loop (ConsumerRunner) are deliberately two steps, so
- * each is teachable on its own. The consumer is not subscribed yet — the runner
- * subscribes when it starts.
+ * Builds a MessageConsumer from a named profile and a group id — the consume-side
+ * mirror of ProducerFactory. Construction (this factory) and the consume loop
+ * (MessageConsumer::run) are deliberately two steps, so each is teachable on its
+ * own. The wrapped \RdKafka\KafkaConsumer is not subscribed yet — run() subscribes
+ * when it starts.
  */
 final readonly class ConsumerFactory
 {
@@ -33,7 +33,7 @@ final readonly class ConsumerFactory
      *                                             enable.auto.commit); group.id is
      *                                             always set and wins over them
      */
-    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null, array $overrides = []): KafkaConsumer
+    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null, array $overrides = []): MessageConsumer
     {
         $profile = $profile instanceof KafkaProfile ? $profile : $this->profiles->get($profile);
 
@@ -43,6 +43,6 @@ final readonly class ConsumerFactory
         ]);
         ($callbacks ?? new CallbackKit(new RebalanceCallback(), new ErrorCallback()))->attachTo($conf);
 
-        return new KafkaConsumer($conf);
+        return new MessageConsumer(new KafkaConsumer($conf));
     }
 }

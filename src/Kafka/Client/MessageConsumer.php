@@ -2,15 +2,21 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kafka\Runtime;
+namespace Workshop\Kafka\Client;
 
 use RdKafka\Exception;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
+use Workshop\Kafka\Runtime\CommitPolicy;
+use Workshop\Kafka\Runtime\RunLimits;
 
 /**
- * Owns the consume loop so a command supplies only a per-message handler. It hides
- * the boilerplate every consumer block would otherwise re-derive: the
+ * A typed wrapper over \RdKafka\KafkaConsumer — the consume-side mirror of
+ * MessageProducer. Where the producer's single public verb is produce(), the
+ * consumer's is run(): it owns the consume loop so a command supplies only a
+ * per-message handler.
+ *
+ * run() hides the boilerplate every consumer block would otherwise re-derive: the
  * NO_ERROR/TIMED_OUT/PARTITION_EOF/error switch, the at-least-once commit AFTER a
  * successful handler, the max-message / runtime / idle stop conditions, graceful
  * SIGTERM/SIGINT shutdown, and close() (immediate LeaveGroup) in a finally so the
@@ -19,8 +25,13 @@ use RdKafka\Message;
  * Pass a narrator to surface assign/commit/EOF lines — the Block 1 verbose mode
  * that makes the loop's mechanics visible.
  */
-final readonly class ConsumerRunner
+final readonly class MessageConsumer
 {
+    public function __construct(
+        private KafkaConsumer $consumer,
+    ) {
+    }
+
     /**
      * @param list<string>                  $topics
      * @param callable(Message): void       $handler
@@ -31,7 +42,6 @@ final readonly class ConsumerRunner
      * @throws Exception
      */
     public function run(
-        KafkaConsumer $consumer,
         array $topics,
         callable $handler,
         RunLimits $limits,
@@ -39,7 +49,7 @@ final readonly class ConsumerRunner
         ?\Closure $narrate = null,
         int $pauseMs = 0,
     ): int {
-        $consumer->subscribe($topics);
+        $this->consumer->subscribe($topics);
 
         $running = true;
         pcntl_async_signals(true);
@@ -59,7 +69,7 @@ final readonly class ConsumerRunner
                 }
 
                 // consume() also drives the rebalance/error callbacks on the conf.
-                $message = $consumer->consume($limits->pollTimeoutMs);
+                $message = $this->consumer->consume($limits->pollTimeoutMs);
                 if (! $running) {
                     break;
                 }
@@ -68,7 +78,7 @@ final readonly class ConsumerRunner
                     case RD_KAFKA_RESP_ERR_NO_ERROR:
                         $handler($message);
                         if (CommitPolicy::AfterEachMessage === $policy) {
-                            $consumer->commit($message);
+                            $this->consumer->commit($message);
                             $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
                         }
                         ++$processed;
@@ -103,7 +113,7 @@ final readonly class ConsumerRunner
             }
         } finally {
             // Final commit + LeaveGroup, even if the handler threw.
-            $consumer->close();
+            $this->consumer->close();
         }
 
         return $processed;

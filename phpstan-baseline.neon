@@ -22,4 +22,4 @@ parameters:
 			message: '#^Negated boolean expression is always false\.$#'
 			identifier: booleanNot.alwaysFalse
 			count: 1
-			path: src/Kafka/Runtime/ConsumerRunner.php
+			path: src/Kafka/Client/MessageConsumer.php

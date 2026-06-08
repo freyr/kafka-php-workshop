@@ -21,7 +21,6 @@ use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
-use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Serde\MessageSerializer;
 use Workshop\Produce\Message;
 
@@ -89,7 +88,6 @@ final class ConsumeCommandTest extends TestCase
 
         $command = new ConsumeCommand(
             $consumers,
-            new ConsumerRunner(),
             new MessageInterpreter(new DtoRouting([]), $serializer, new MessageDenormalizer()),
             new ProjectionHandler($connection),
             new TransactionMiddleware($connection),

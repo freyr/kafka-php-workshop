@@ -24,7 +24,6 @@ use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Client\ConsumerFactory;
-use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Runtime\ConsumeStrategy;
 use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RunLimits;
@@ -42,7 +41,6 @@ final class ConsumeCommand extends Command
 
     public function __construct(
         private readonly ConsumerFactory $consumers,
-        private readonly ConsumerRunner $runner,
         private readonly MessageInterpreter $interpreter,
         private readonly ProjectionHandler $handler,
         private readonly TransactionMiddleware $transaction,
@@ -136,8 +134,7 @@ final class ConsumeCommand extends Command
             ? $this->readOnlyHandler($output, $tally)
             : $this->dispatchingHandler($strategy, $output, $tally);
 
-        $this->runner->run(
-            $consumer,
+        $consumer->run(
             [$topic],
             $messageHandler,
             new RunLimits(maxMessages: $max, pollTimeoutMs: $pollTimeoutMs, stopOnIdle: $stopOnIdle),
