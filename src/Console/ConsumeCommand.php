@@ -17,7 +17,7 @@ use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\ConsumerRunner;
 use Workshop\Kafka\Runtime\RunLimits;
-use Workshop\Kafka\Serde\JsonSerializer;
+use Workshop\Kafka\Serde\MessageSerializer;
 
 #[AsCommand(
     name: 'consume',
@@ -28,7 +28,7 @@ final class ConsumeCommand extends Command
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
-        private readonly JsonSerializer $serializer,
+        private readonly MessageSerializer $serializer,
     ) {
         parent::__construct();
     }
@@ -91,9 +91,8 @@ final class ConsumeCommand extends Command
     }
 
     /**
-     * Render a consumed payload. The Block 1-2 producer emits JSON via the native
-     * Symfony Serializer, so decode it back to its fields; anything that is not
-     * decodable JSON (legacy plain-string messages on the topic) is shown verbatim
+     * Render a consumed payload by decoding it back to its fields; anything the
+     * serializer cannot decode (a non-AVRO record on the topic) is shown verbatim
      * rather than crashing the run.
      */
     private function render(?string $payload): string

@@ -30,23 +30,24 @@ Run everything through the php container:
 docker compose run --rm php bin/console <command> [args]
 ```
 
-**Generic produce/consume** (Block 1–2, JSON) — parametrized, not per-demo:
+**Produce AVRO events** — `produce` streams enveloped AVRO against Schema Registry:
 
 ```sh
-bin/console produce [-c N] [--key a,b,c | --key-cardinality N | --unkeyed] [--payload 'event-{n}']
+bin/console produce [-c N] [--message-name NAME] [--pool N] [--interval MS]
 bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
 ```
 
-`produce` emits N `TextMessage`s to the routed `consumer-groups-events` topic,
-cycling keys for stable key→partition hashing (or `--unkeyed` to scatter).
-`consume` under a named `-g` group keeps committed offsets across runs; omit `-g`
-to read from earliest under a throwaway group.
+`produce` picks a random message from the catalog (`order.created`, `order.updated`,
+`order.cancelled`, `payment.processed`, `inventory.reserved`) — or one pinned with
+`--message-name` — keys each by an order id drawn from a reusable `--pool`, and
+AVRO-encodes it. With `-c N` it sends N and stops; without it, it streams until
+Ctrl+C (flushing on exit). Schemas are **not** auto-registered — run
+`schema:register --all` first. `consume` under a named `-g` group keeps committed
+offsets across runs; omit `-g` to read from earliest under a throwaway group.
 
-**Enveloped AVRO events** (Block 3) — Confluent wire format against Schema Registry:
+**Consume enveloped AVRO** (Block 3) — Confluent wire format against Schema Registry:
 
 ```sh
-bin/console events:produce <order.created|order.updated|order.cancelled|payment.processed|inventory.reserved> \
-    [--order-id ID] [--status STATUS] [--reason REASON]
 bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # decode + print the envelope
 bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by message-name header
 ```
@@ -78,24 +79,25 @@ bin/console topic:list                                            # list topics 
 bin/console topic:describe <topic>                                # partition count
 ```
 
-**Admin shell scripts** in `bin/` (php-rdkafka has no admin API): `topic-create`,
-`topic-delete`, `topic-describe`, `topic-map`, `topic-map-delete`, `group-describe`,
-`group-reset`, `group-delete`, `partition-offsets`.
+**Admin shell scripts** in `bin/` (php-rdkafka has no admin API): `kafka-setup`,
+`kafka-teardown` (provision/drop the full topic inventory), `topic-create`,
+`topic-delete`, `topic-describe`, `group-describe`, `group-reset`, `group-delete`,
+`partition-offsets`.
 
 ## Producer & serializer model
 
 - **`Message`** (`src/Produce/Message.php`) is an abstract base. Each event is built
   through a static `create()` named constructor (`OrderCreated::create($orderId)`,
-  `TextMessage::create(...)`, …). The base supplies the envelope autonomously:
+  `PaymentProcessed::create($orderId)`, …). The base supplies the envelope autonomously:
   `envelope()` = `{metadata: {event_id, timestamp}, ...payload}`. The partition key
   is a transport concern, kept out of the payload.
 - **Wire name as a header.** The name lives in a `#[MessageName('order.created')]`
   class attribute, resolved once per class by `MessageNameResolver`, and stamped as
   the `message-name` Kafka **header** — so consumers route or skip without decoding.
-- **Serializers** implement `MessageSerializer` (`src/Kafka/Serde/`): `JsonSerializer`
-  (Block 1–2) and `AvroSerializer` (Block 3, Confluent wire format — magic byte +
-  4-byte schema id + Avro body, RecordNameStrategy subjects). `SchemaRegistryClient`
-  handles register/check/versions; it never touches the wire format.
+- **Serializer.** `AvroSerializer` implements `MessageSerializer` (`src/Kafka/Serde/`):
+  the Confluent wire format — magic byte + 4-byte schema id + Avro body, under
+  RecordNameStrategy subjects. `SchemaRegistryClient` handles register/check/versions;
+  it never touches the wire format.
 - **Routing is data.** `config/producers.yaml` maps message-name →
   `{type, topic, subject, schema}` (`MessageRouting`/`Route`); `config/consumers.yaml`
   maps message-name → read-model DTO (`DtoRouting`).

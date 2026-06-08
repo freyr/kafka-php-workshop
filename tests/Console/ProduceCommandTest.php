@@ -13,39 +13,54 @@ use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
-use Workshop\Kafka\Serde\JsonSerializer;
+use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Produce\Message;
+use Workshop\Produce\MessageCatalog;
 use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
 
 /**
  * The input-validation branches return Command::INVALID before any client is
- * built, so these run without a broker — the factory is real but never reached.
+ * built, so these run without a broker — the factory and serializer are real but
+ * never reached.
  */
 final class ProduceCommandTest extends TestCase
 {
-    public function testKeyAndKeyCardinalityAreMutuallyExclusive(): void
+    public function testUnknownMessageNameIsRejected(): void
     {
         $tester = $this->tester();
 
         $tester->execute([
-            '--key' => 'a,b',
-            '--key-cardinality' => '4',
+            '--message-name' => 'not.a.message',
         ]);
 
         self::assertSame(Command::INVALID, $tester->getStatusCode());
-        self::assertStringContainsString('mutually exclusive', $tester->getDisplay());
+        self::assertStringContainsString('Unknown message name', $tester->getDisplay());
+        self::assertStringContainsString('order.created', $tester->getDisplay());
     }
 
-    public function testKeyCardinalityMustBePositive(): void
+    public function testCountMustBePositive(): void
     {
         $tester = $this->tester();
 
         $tester->execute([
-            '--key-cardinality' => '0',
+            '--count' => '0',
         ]);
 
         self::assertSame(Command::INVALID, $tester->getStatusCode());
         self::assertStringContainsString('must be >= 1', $tester->getDisplay());
+    }
+
+    public function testPoolMustBePositive(): void
+    {
+        $tester = $this->tester();
+
+        $tester->execute([
+            '--pool' => '0',
+        ]);
+
+        self::assertSame(Command::INVALID, $tester->getStatusCode());
+        self::assertStringContainsString('--pool must be >= 1', $tester->getDisplay());
     }
 
     private function tester(): CommandTester
@@ -63,6 +78,18 @@ final class ProduceCommandTest extends TestCase
             new MessageNameResolver(),
         );
 
-        return new CommandTester(new ProduceCommand($factory, new JsonSerializer()));
+        $serializer = new class implements MessageSerializer {
+            public function encode(Message $payload): string
+            {
+                return '';
+            }
+
+            public function decode(string $bytes): mixed
+            {
+                return null;
+            }
+        };
+
+        return new CommandTester(new ProduceCommand($factory, $serializer, new MessageCatalog()));
     }
 }

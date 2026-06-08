@@ -4,24 +4,27 @@ declare(strict_types=1);
 
 namespace Workshop\Console;
 
+use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Uid\Uuid;
 use Workshop\Kafka\Client\ProducerFactory;
-use Workshop\Kafka\Serde\JsonSerializer;
-use Workshop\Produce\TextMessage;
+use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Produce\MessageCatalog;
 
 #[AsCommand(
     name: 'produce',
-    description: 'Produce N TextMessages to the routed json topic. Cycle through --key for keyed partitioning, or --unkeyed to scatter them.',
+    description: 'Stream AVRO events to their routed topics. Each message is picked at random from the catalog (pin one with --message-name) and keyed by an order id drawn from a small reusable pool. With --count it sends that many and stops; without it, it streams until Ctrl+C.',
 )]
 final class ProduceCommand extends Command
 {
     public function __construct(
         private readonly ProducerFactory $producers,
-        private readonly JsonSerializer $serializer,
+        private readonly MessageSerializer $serializer,
+        private readonly MessageCatalog $catalog,
     ) {
         parent::__construct();
     }
@@ -29,80 +32,99 @@ final class ProduceCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'Number of messages to produce', 10)
-            ->addOption('key', 'k', InputOption::VALUE_REQUIRED, 'Comma-separated semantic keys; messages cycle through them (crc32(key) routes each key to a fixed partition). Omit for unkeyed: a random partition per message')
-            ->addOption('key-cardinality', null, InputOption::VALUE_REQUIRED, 'Generate this many distinct synthetic keys (key-0..key-{N-1}) and cycle through them; shows even spread from a high-cardinality key. Mutually exclusive with --key')
-            ->addOption('unkeyed', null, InputOption::VALUE_NONE, 'Scatter every message across partitions, ignoring keys (overrides --key)')
-            ->addOption('payload', null, InputOption::VALUE_REQUIRED, 'Payload template; {n} = 1-based index, {key} = message key', 'event-{n}')
-            ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Producer profile to build the client from', 'producer.simple');
+            ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'How many messages to produce, then stop. Omit to stream indefinitely until interrupted (Ctrl+C / SIGTERM).')
+            ->addOption('message-name', null, InputOption::VALUE_REQUIRED, 'Produce only this message (e.g. order.created); omit to pick a random message per send')
+            ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool keys are drawn from; a smaller pool puts more event types on the same order (same key → same partition, ordered)', '8')
+            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between sends; useful for watching a consumer keep up with an indefinite stream', '0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $count = Input::int($input, 'count');
-        $template = Input::string($input, 'payload');
-        $profile = Input::string($input, 'profile');
-        $forceUnkeyed = (bool) $input->getOption('unkeyed');
+        $max = Input::intOrNull($input, 'count');
+        $pin = Input::stringOrNull($input, 'message-name');
+        $poolSize = Input::int($input, 'pool');
+        $intervalMs = Input::int($input, 'interval');
 
-        $cardinality = Input::intOrNull($input, 'key-cardinality');
-        $keys = $this->parseKeys(Input::stringOrNull($input, 'key'));
-
-        if (null !== $cardinality && [] !== $keys) {
-            $output->writeln('<error>--key and --key-cardinality are mutually exclusive.</error>');
+        if (null !== $pin && ! $this->catalog->has($pin)) {
+            $output->writeln(sprintf('<error>Unknown message name: %s</error>', $pin));
+            $output->writeln('Available: ' . implode(', ', $this->catalog->names()));
 
             return Command::INVALID;
         }
-        if (null !== $cardinality) {
-            if ($cardinality < 1) {
-                $output->writeln('<error>--key-cardinality must be >= 1.</error>');
+        if (null !== $max && $max < 1) {
+            $output->writeln('<error>--count must be >= 1 (omit it entirely to stream indefinitely).</error>');
 
-                return Command::INVALID;
+            return Command::INVALID;
+        }
+        if ($poolSize < 1) {
+            $output->writeln('<error>--pool must be >= 1.</error>');
+
+            return Command::INVALID;
+        }
+
+        $names = null !== $pin ? [$pin] : $this->catalog->names();
+        $orderIds = $this->orderPool($poolSize);
+
+        $producer = $this->producers->create('producer.idempotent', $this->serializer);
+
+        $running = true;
+        pcntl_async_signals(true);
+        $stop = static function () use (&$running): void {
+            $running = false;
+        };
+        pcntl_signal(SIGINT, $stop);
+        pcntl_signal(SIGTERM, $stop);
+
+        if (null === $max) {
+            $output->writeln('<comment>streaming until interrupted (Ctrl+C) — flushing on exit…</comment>');
+        }
+
+        $sent = 0;
+
+        try {
+            while ($running && (null === $max || $sent < $max)) {
+                $name = $names[array_rand($names)];
+                $orderId = $orderIds[array_rand($orderIds)];
+                $message = $this->catalog->build($name, $orderId);
+
+                $produced = $producer->produce($message);
+                ++$sent;
+
+                $output->writeln(sprintf('produced <info>%s</info> → %s key=%s', $produced->name, $produced->route->topic, $message->partitionKey()));
+
+                // An async SIGINT/SIGTERM interrupts the sleep, so the loop
+                // condition re-checks $running right after without waiting it out.
+                if ($intervalMs > 0) {
+                    usleep($intervalMs * 1000);
+                }
             }
-            $keys = array_map(static fn (int $i): string => 'key-' . $i, range(0, $cardinality - 1));
+        } catch (SchemaRegistryException) {
+            $output->writeln('<error>No schema registered for this event.</error>');
+            $output->writeln('Schemas are not auto-registered — register them first, then produce again:');
+            $output->writeln('  <comment>bin/console schema:register --all</comment>');
+
+            return Command::FAILURE;
+        } finally {
+            $producer->close();
         }
 
-        $producer = $this->producers->create($profile, $this->serializer);
-
-        for ($i = 1; $i <= $count; ++$i) {
-            $key = [] === $keys ? null : $keys[($i - 1) % count($keys)];
-            $text = strtr($template, [
-                '{n}' => (string) $i,
-                '{key}' => $key ?? '',
-            ]);
-            $message = TextMessage::create($i, $key, $text);
-
-            $unkeyed = $forceUnkeyed || null === $key;
-            $produced = $producer->produce($message, $unkeyed);
-
-            $output->writeln($this->describe($produced->route->topic, $unkeyed ? null : $key, $text));
-        }
-
-        $producer->close();
+        $output->writeln(sprintf('<info>done</info> — produced %d message(s)', $sent));
 
         return Command::SUCCESS;
     }
 
     /**
+     * A fixed pool of synthetic order ids. Keys are drawn from it at random, so a
+     * small pool concentrates several event types onto the same order (ordered
+     * within its partition) while a large pool spreads them across partitions.
+     *
      * @return list<string>
      */
-    private function parseKeys(?string $raw): array
+    private function orderPool(int $size): array
     {
-        if (null === $raw) {
-            return [];
-        }
-
-        return array_values(array_filter(
-            array_map('trim', explode(',', $raw)),
-            static fn (string $key): bool => '' !== $key,
-        ));
-    }
-
-    private function describe(string $topic, ?string $key, string $payload): string
-    {
-        $parts = ["topic={$topic}"];
-        $parts[] = null !== $key ? "key={$key}" : 'unkeyed';
-        $parts[] = "value={$payload}";
-
-        return 'produced: ' . implode(' ', $parts);
+        return array_map(
+            static fn (): string => 'ord-' . substr(Uuid::v4()->toRfc4122(), 0, 8),
+            range(1, $size),
+        );
     }
 }

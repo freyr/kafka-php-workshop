@@ -11,7 +11,7 @@ use Workshop\Produce\Message;
 use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
 use Workshop\Produce\OrderCreated;
-use Workshop\Produce\TextMessage;
+use Workshop\Tests\Support\FixtureMessage;
 
 final class MessageProducerTest extends TestCase
 {
@@ -37,15 +37,19 @@ final class MessageProducerTest extends TestCase
         };
 
         $routing = new MessageRouting([
-            'text.plain' => [
-                'type' => 'json',
+            'fixture' => [
+                'type' => 'avro',
                 'topic' => 'demo-topic',
             ],
         ]);
         $producer = new MessageProducer($this->localProducer(), $spy, $routing, new MessageNameResolver());
 
-        $keyed = TextMessage::create(1, 'alice', 'order-1');
-        $unkeyed = TextMessage::create(2, null, 'order-2');
+        $keyed = FixtureMessage::create('alice', [
+            'text' => 'order-1',
+        ]);
+        $unkeyed = FixtureMessage::create(null, [
+            'text' => 'order-2',
+        ]);
 
         $producer->produce($keyed);
         $producer->produce($unkeyed, true);

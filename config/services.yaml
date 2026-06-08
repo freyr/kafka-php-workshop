@@ -44,6 +44,16 @@ services:
     # the Produce namespace is otherwise value objects, never services).
     Workshop\Produce\MessageNameResolver: ~
 
+    # The buildable AVRO message catalog the `produce` command randomizes over (a
+    # stateless lookup; like MessageNameResolver, the one service in an otherwise
+    # value-object namespace).
+    Workshop\Produce\MessageCatalog: ~
+
+    # The wire is AVRO, so the MessageSerializer seam (injected by produce and
+    # consume) resolves to the AvroSerializer. Commands that name the concrete
+    # AvroSerializer directly are unaffected by this alias.
+    Workshop\Kafka\Serde\MessageSerializer: '@Workshop\Kafka\Serde\AvroSerializer'
+
     # The Confluent AVRO serializer stack, wired as data. AvroSerializer used to
     # assemble this chain in its constructor; now it just receives the finished
     # RecordSerializer (autowired by type) and stays pure framing logic.

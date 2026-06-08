@@ -1,15 +1,12 @@
-# Produce-side routing: message name => wire identity (type + topic [+ subject +
-# schema]). `type` selects the serializer: avro routes register a subject and a
-# schema; a json route (Block 1-2) carries only a topic. Subjects use
-# RecordNameStrategy (the schema's fully-qualified record name, lower_snake
-# component) and carry NO version marker — a breaking change mints a brand-new
-# subject, never a vN suffix. order.* events share one topic; each registers its
-# own subject. Schema paths resolve against %kafka.schema_dir%.
+# Produce-side routing: message name => wire identity (type + topic + subject +
+# schema). Every route is AVRO — the producer streams enveloped events encoded
+# against Schema Registry. Subjects use RecordNameStrategy (the schema's
+# fully-qualified record name, lower_snake component) and carry NO version marker
+# — a breaking change mints a brand-new subject, never a vN suffix. order.* events
+# share one topic; each registers its own subject. Schema paths resolve against
+# %kafka.schema_dir%.
 workshop:
     producers:
-        text.plain:
-            type: json
-            topic: consumer-groups-events
         order.created:
             type: avro
             topic: enet.ecommerce.orders
