@@ -37,6 +37,7 @@ final readonly class ConsumerRunner
         RunLimits $limits,
         CommitPolicy $policy,
         ?\Closure $narrate = null,
+        int $pauseMs = 0,
     ): int {
         $consumer->subscribe($topics);
 
@@ -71,6 +72,13 @@ final readonly class ConsumerRunner
                             $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
                         }
                         ++$processed;
+
+                        // Throttle between messages. usleep is interrupted by an
+                        // async SIGINT/SIGTERM, so the loop re-checks $running right
+                        // after instead of waiting the pause out.
+                        if ($pauseMs > 0) {
+                            usleep($pauseMs * 1000);
+                        }
 
                         break;
 

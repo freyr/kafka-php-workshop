@@ -47,6 +47,16 @@ abstract class Message
     }
 
     /**
+     * The envelope's globally-unique id (UUIDv7). It lives inside the AVRO envelope
+     * as metadata.event_id, and the producer also stamps it as the `event-id` Kafka
+     * header so a consumer can read the dedup/idempotency key without decoding.
+     */
+    public function eventId(): string
+    {
+        return $this->eventId;
+    }
+
+    /**
      * The full enveloped record that goes on the wire: a minimal metadata record
      * plus the flattened business payload. The wire name is NOT carried in the
      * payload — it travels as the `message-name` Kafka header (stamped by the

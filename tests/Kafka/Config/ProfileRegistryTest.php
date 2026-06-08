@@ -69,7 +69,7 @@ final class ProfileRegistryTest extends TestCase
         $this->registry->get('does-not-exist');
     }
 
-    public function testAllReturnsTheFourRegisteredProfiles(): void
+    public function testAllReturnsTheRegisteredProfiles(): void
     {
         $names = array_map(static fn (KafkaProfile $p): string => $p->name, $this->registry->all());
 
@@ -77,6 +77,7 @@ final class ProfileRegistryTest extends TestCase
             'producer.simple',
             'producer.idempotent',
             'consumer.at-least-once',
+            'consumer.dynamic',
             'consumer.ephemeral',
         ], $names);
     }

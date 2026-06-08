@@ -10,25 +10,37 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Workshop\Consume\ConsumedMessage;
+use Workshop\Consume\ConsumerBus;
+use Workshop\Consume\IdempotencyMiddleware;
+use Workshop\Consume\MessageInterpreter;
+use Workshop\Consume\OrderCancelledDto;
+use Workshop\Consume\OrderCreatedDto;
+use Workshop\Consume\OrderUpdatedDto;
+use Workshop\Consume\ProjectionHandler;
+use Workshop\Consume\TransactionMiddleware;
 use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Client\ConsumerFactory;
-use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\ConsumerRunner;
+use Workshop\Kafka\Runtime\ConsumeStrategy;
+use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RunLimits;
-use Workshop\Kafka\Serde\MessageSerializer;
 
 #[AsCommand(
-    name: 'consume',
-    description: 'Consume a topic under a consumer group, committing offsets. Omit --group to read from earliest under a throwaway group.',
+    name: 'kafka:consume',
+    description: 'Consume a topic into the orders projection. Parametrize the group, start offset, throttle, and commit strategy (per-message / auto / idempotent).',
 )]
 final class ConsumeCommand extends Command
 {
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly ConsumerRunner $runner,
-        private readonly MessageSerializer $serializer,
+        private readonly MessageInterpreter $interpreter,
+        private readonly ProjectionHandler $handler,
+        private readonly TransactionMiddleware $transaction,
+        private readonly IdempotencyMiddleware $idempotency,
     ) {
         parent::__construct();
     }
@@ -36,29 +48,58 @@ final class ConsumeCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('topic', InputArgument::REQUIRED, 'Topic to consume from (e.g. consumer-groups-events)')
-            ->addOption('group', 'g', InputOption::VALUE_REQUIRED, 'Consumer group ID; omit for an ephemeral group that always starts from earliest')
-            ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = read until the receive timeout)', 0)
-            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; a poll returning nothing within it ends the run', 5000)
-            ->addOption('no-commit', null, InputOption::VALUE_NONE, 'Do not commit offsets (read-only tail)');
+            ->addArgument('topic', InputArgument::REQUIRED, 'Topic to consume (e.g. enet.ecommerce.orders)')
+            ->addOption('group', 'g', InputOption::VALUE_REQUIRED, 'Consumer group id; omit for an ephemeral group that starts from earliest')
+            ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end', OffsetReset::Committed->value)
+            ->addOption('commit', null, InputOption::VALUE_REQUIRED, 'Mode: per-message | auto | idempotent | readonly (separate group, never commits, prints name/id only)', ConsumeStrategy::PerMessage->value)
+            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
+            ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --commit=auto); default 5000', '5000')
+            ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = read until the receive timeout)', '0')
+            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run', '5000')
+            ->addOption('static-membership', null, InputOption::VALUE_NONE, 'Add a group.instance.id so a restart rejoins without a full rebalance; off by default — leave off for short CLI runs');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = Input::string($input, 'topic');
+        try {
+            $offsetReset = OffsetReset::fromOption(Input::string($input, 'from'));
+            $strategy = ConsumeStrategy::fromOption(Input::string($input, 'commit'));
+        } catch (\InvalidArgumentException $e) {
+            $output->writeln('<error>' . $e->getMessage() . '</error>');
+
+            return Command::INVALID;
+        }
+
+        $topic = Input::string($input, 'topic');
         $max = Input::int($input, 'max');
         $timeoutMs = Input::int($input, 'timeout');
-        $commit = ! (bool) $input->getOption('no-commit');
+        $pauseMs = Input::int($input, 'interval');
+        $autoCommitMs = Input::int($input, 'auto-commit-interval');
         $groupOption = Input::stringOrNull($input, 'group');
-        $named = null !== $groupOption;
-        $group = $this->resolveGroup($groupOption, $topicName);
+        $staticMembership = (bool) $input->getOption('static-membership');
 
-        $output->writeln(sprintf('<comment>group=%s commit=%s</comment>', $group, $commit ? 'yes' : 'no'));
+        // Each lane maps to a named profile rather than a runtime tweak, so the config
+        // it applies is visible in kafka:config:show:
+        //   readonly      → ephemeral (throwaway, never commits)
+        //   no -g         → ephemeral (throwaway group from earliest)
+        //   named         → dynamic (dynamic membership: rebalance on every join/leave)
+        //   named +static → at-least-once (group.instance.id: rejoin without rebalance)
+        // The dynamic-vs-static pair is the rebalancing contrast for a named group.
+        [$profile, $group] = match (true) {
+            $strategy->isReadOnly() => ['consumer.ephemeral', sprintf('readonly-%s-%d-%d', $topic, getmypid(), time())],
+            null === $groupOption => ['consumer.ephemeral', sprintf('ephemeral-%s-%d-%d', $topic, getmypid(), time())],
+            $staticMembership => ['consumer.at-least-once', $groupOption],
+            default => ['consumer.dynamic', $groupOption],
+        };
 
-        // A named group is a real, reusable consumer (static membership + commit);
-        // an omitted group is a throwaway that always replays from earliest.
-        $profile = $named ? 'consumer.at-least-once' : 'consumer.ephemeral';
-        $policy = $commit ? CommitPolicy::AfterEachMessage : CommitPolicy::None;
+        $output->writeln(sprintf(
+            '<comment>topic=%s group=%s profile=%s from=%s commit=%s</comment>',
+            $topic,
+            $group,
+            $profile,
+            $offsetReset->value,
+            $strategy->value,
+        ));
 
         $narrate = $output->isVerbose()
             ? function (string $line) use ($output): void {
@@ -66,89 +107,111 @@ final class ConsumeCommand extends Command
             }
         : null;
 
-        $consumer = $this->consumers->create($profile, $group, $this->callbacks($narrate));
+        $callbacks = new CallbackKit(
+            new RebalanceCallback($narrate, $offsetReset),
+            new ErrorCallback($narrate),
+        );
 
-        $handler = function (\RdKafka\Message $message) use ($output): void {
-            $output->writeln(sprintf(
-                'partition=%d offset=%d key=%s value=%s',
-                $message->partition,
-                $message->offset,
-                $message->key ?? '<null>',
-                $this->render($message->payload),
-            ));
-        };
+        $consumer = $this->consumers->create($profile, $group, $callbacks, $strategy->confOverrides($autoCommitMs));
+
+        $tally = [
+            'handled' => 0,
+            'skipped' => 0,
+        ];
+
+        $messageHandler = $strategy->isReadOnly()
+            ? $this->readOnlyHandler($output, $tally)
+            : $this->dispatchingHandler($strategy, $output, $tally);
 
         $this->runner->run(
             $consumer,
-            [$topicName],
-            $handler,
+            [$topic],
+            $messageHandler,
             new RunLimits(maxMessages: $max, pollTimeoutMs: $timeoutMs, stopOnIdle: true),
-            $policy,
+            $strategy->commitPolicy(),
             $narrate,
+            $pauseMs,
         );
+
+        $output->writeln('');
+        $output->writeln($strategy->isReadOnly()
+            ? sprintf('<info>done</info> — inspected %d message(s)', $tally['handled'])
+            : sprintf('<info>done</info> — handled %d, skipped %d', $tally['handled'], $tally['skipped']));
 
         return Command::SUCCESS;
     }
 
     /**
-     * Render a consumed payload by decoding it back to its fields; anything the
-     * serializer cannot decode (a non-AVRO record on the topic) is shown verbatim
-     * rather than crashing the run.
+     * The normal pipeline: interpret each record into a typed DTO and dispatch it
+     * through the bus (with the strategy's middleware) to the projection handler.
+     *
+     * @param array{handled: int, skipped: int} $tally
+     *
+     * @return \Closure(\RdKafka\Message): void
      */
-    private function render(?string $payload): string
+    private function dispatchingHandler(ConsumeStrategy $strategy, OutputInterface $output, array &$tally): \Closure
     {
-        if (null === $payload) {
-            return '<null>';
-        }
+        $bus = new ConsumerBus(
+            $this->handler,
+            $strategy->isTransactional() ? [$this->transaction, $this->idempotency] : [],
+        );
 
-        try {
-            $decoded = $this->serializer->decode($payload);
-        } catch (\Throwable) {
-            return $payload;
-        }
+        return function (\RdKafka\Message $message) use ($bus, $output, &$tally): void {
+            $consumed = $this->interpreter->interpret($message);
+            if (null === $consumed) {
+                ++$tally['skipped'];
 
-        if (! is_array($decoded)) {
-            return $payload;
-        }
+                return;
+            }
 
-        $fields = [];
-        foreach ($decoded as $field => $value) {
-            $fields[] = sprintf('%s: %s', $field, $this->stringify($value));
-        }
-
-        return '{' . implode(', ', $fields) . '}';
-    }
-
-    private function stringify(mixed $value): string
-    {
-        return match (true) {
-            null === $value => 'null',
-            is_bool($value) => $value ? 'true' : 'false',
-            is_scalar($value) => (string) $value,
-            default => json_encode($value) ?: '<unrenderable>',
+            $bus->dispatch($consumed);
+            ++$tally['handled'];
+            $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
         };
     }
 
-    private function callbacks(?\Closure $narrate): ?CallbackKit
+    /**
+     * The readonly pipeline: print each record's name and id straight off the
+     * headers — no decode, no DTO, no handler, no commit.
+     *
+     * @param array{handled: int, skipped: int} $tally
+     *
+     * @return \Closure(\RdKafka\Message): void
+     */
+    private function readOnlyHandler(OutputInterface $output, array &$tally): \Closure
     {
-        if (null === $narrate) {
-            return null; // factory default kit (silent rebalance + error)
-        }
+        return function (\RdKafka\Message $message) use ($output, &$tally): void {
+            $output->writeln(sprintf(
+                '  <info>•</info> %s id=%s partition=%d offset=%d',
+                '' !== ($name = $this->header($message, 'message-name')) ? $name : '<none>',
+                '' !== ($id = $this->header($message, 'event-id')) ? $id : '<none>',
+                $message->partition,
+                $message->offset,
+            ));
+            ++$tally['handled'];
+        };
+    }
 
-        return new CallbackKit(new RebalanceCallback($narrate), new ErrorCallback($narrate));
+    private function header(\RdKafka\Message $message, string $key): string
+    {
+        $value = $message->headers[$key] ?? null;
+
+        return is_string($value) ? $value : '';
     }
 
     /**
-     * A named group keeps its committed offsets across runs (real consumer-group
-     * behaviour); an ephemeral, never-reused id forces every run to start at the
-     * earliest offset — handy for inspecting a topic's full contents.
+     * A one-line description of a consumed event for the run log: the wire name and
+     * the order it touched (every consumed DTO is keyed on an order id).
      */
-    private function resolveGroup(?string $group, string $topicName): string
+    private function describe(ConsumedMessage $message): string
     {
-        if (null !== $group) {
-            return $group;
-        }
+        $orderId = match (true) {
+            $message->dto instanceof OrderCreatedDto,
+            $message->dto instanceof OrderUpdatedDto,
+            $message->dto instanceof OrderCancelledDto => $message->dto->orderId,
+            default => '?',
+        };
 
-        return sprintf('ephemeral-%s-%d-%d', $topicName, getmypid(), time());
+        return sprintf('%s order=%s', $message->name, $orderId);
     }
 }

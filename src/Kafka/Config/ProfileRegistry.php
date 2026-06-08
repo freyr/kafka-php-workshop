@@ -53,7 +53,15 @@ final readonly class ProfileRegistry
 
             // Block 1/3: named group, explicit commit, static membership, and
             // cooperative-sticky rebalancing — the production consumer baseline.
+            // group.instance.id gives each member a stable identity, so a restart
+            // rejoins its partitions WITHOUT a rebalance.
             new KafkaProfile('consumer.at-least-once', ClientRole::Consumer, $this->pick($this->tuning->consumer(), ['offset', 'assignment'])),
+
+            // Same named, committing consumer WITHOUT group.instance.id: dynamic
+            // membership, so every join/leave triggers a (cooperative) rebalance.
+            // The deliberate contrast to consumer.at-least-once — kafka:consume picks
+            // between the two to show how static membership changes rebalancing.
+            new KafkaProfile('consumer.dynamic', ClientRole::Consumer, $this->pick($this->tuning->consumer(), ['offset', 'assignment'], ['group.instance.id'])),
 
             // Block 1: throwaway group that reads the whole log from earliest.
             // No group.instance.id — static membership would fence a re-run.

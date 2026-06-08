@@ -30,32 +30,52 @@ Run everything through the php container:
 docker compose run --rm php bin/console <command> [args]
 ```
 
-**Produce AVRO events** — `produce` streams enveloped AVRO against Schema Registry:
+**Produce AVRO events** — `kafka:produce:sample` streams enveloped AVRO against Schema Registry:
 
 ```sh
-bin/console produce [-c N] [--message-name NAME] [--pool N] [--interval MS]
-bin/console consume <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS] [--no-commit]
+bin/console kafka:produce:sample [-c N] [--message-name NAME] [--pool N] [--interval MS]
 ```
 
-`produce` picks a random message from the catalog (`order.created`, `order.updated`,
+It picks a random message from the catalog (`order.created`, `order.updated`,
 `order.cancelled`, `payment.processed`, `inventory.reserved`) — or one pinned with
 `--message-name` — keys each by an order id drawn from a reusable `--pool`, and
-AVRO-encodes it. With `-c N` it sends N and stops; without it, it streams until
-Ctrl+C (flushing on exit). Schemas are **not** auto-registered — run
-`schema:register --all` first. `consume` under a named `-g` group keeps committed
-offsets across runs; omit `-g` to read from earliest under a throwaway group.
+AVRO-encodes it, stamping the wire name and event id as the `message-name` and
+`event-id` Kafka headers. With `-c N` it sends N and stops; without it, it streams
+until Ctrl+C (flushing on exit). Schemas are **not** auto-registered — run
+`kafka:schema:register --all` first.
 
-**Consume enveloped AVRO** (Block 3) — Confluent wire format against Schema Registry:
+**Consume into the orders projection** — one parametrized consumer reads a topic,
+AVRO-decodes each record, routes it by its `message-name` header to a read-model DTO,
+and dispatches it to a generic projection handler. Idempotency and transactions are
+bus middleware *outside* the handler (a simplified command-bus shape).
 
 ```sh
-bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # decode + print the envelope
-bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by message-name header
+bin/console kafka:consume:setup                                    # provision orders + processed_events (idempotent)
+bin/console kafka:consume <topic> [-g GROUP] [--from WHERE] [--commit MODE] \
+    [--interval MS] [--auto-commit-interval MS] [--static-membership] [-m MAX] [-t TIMEOUT_MS]
 ```
 
+`--from` sets where a run starts, independent of the committed offset: `beginning`
+(replay the whole log), `committed` (resume — the default), or `end` (only new
+records). `--commit` selects the delivery mode:
+
+| `--commit` | behavior |
+|---|---|
+| `per-message` | commit after each handled message — at-least-once (default) |
+| `auto` | librdkafka commits in the background every `--auto-commit-interval` ms |
+| `idempotent` | dedup on `event_id` + the `orders` upsert in one DB transaction, commit after — effectively-once |
+| `readonly` | a throwaway group that never commits and never reaches the handler; prints each record's name/id from the headers, no decode |
+
 `order.created/updated/cancelled` share the `enet.ecommerce.orders` topic, keyed by
-order id, each on its own subject lineage. `events:dispatch` routes each record by
-its `message-name` header to a per-type DTO handler, ignoring unknown types and
-skipping non-AVRO bytes.
+order id. `--commit idempotent` records each `event_id` in `processed_events` in the
+same transaction as the `orders` upsert, so a redelivered event is a no-op. A named
+`-g` group keeps committed offsets across runs; omit `-g` for a throwaway group from
+earliest. A named group selects one of two profiles to demonstrate rebalancing:
+`consumer.dynamic` by default (dynamic membership — every join/leave triggers a
+cooperative rebalance), or `consumer.at-least-once` with `--static-membership` (adds
+`group.instance.id`, so a restart rejoins without a rebalance). Leave static off for
+short CLI runs, where a dead static member would stall reassignment until
+`session.timeout.ms` elapses. Both profiles are visible in `kafka:config:show`.
 
 **Schema evolution** (Block 4) — flow is **check → register → produce** (schemas are
 **not** auto-registered on produce):

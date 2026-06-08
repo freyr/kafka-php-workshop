@@ -42,6 +42,7 @@ final readonly class Kernel
         $container->setParameter('kafka.schema_dir', $this->projectDir . '/schemas');
         $container->setParameter('kafka.brokers', $env('KAFKA_BROKERS', 'kafka:29092'));
         $container->setParameter('schema_registry.url', $env('SCHEMA_REGISTRY_URL', 'http://schema-registry:8081'));
+        $container->setParameter('database.url', $env('DATABASE_URL', 'mysql://workshop:workshop@mysql:3306/workshop?charset=utf8mb4'));
 
         // Registering the extension makes `workshop:` a valid top-level key in the
         // YAML; the loader hands those configs to WorkshopExtension at compile time.

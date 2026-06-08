@@ -88,10 +88,12 @@ final class MessageProducer
 
     private function send(string $topic, int $partition, Message $message, ?string $key): void
     {
-        // The wire name rides as a header, not in the body: a consumer can route or
-        // skip a record by reading message-name without decoding the payload.
+        // The wire name and event id ride as headers, not in the body: a consumer can
+        // route or skip a record by reading message-name, and dedup on event-id, both
+        // without decoding the payload (event-id falls back to metadata.event_id).
         $headers = [
             'message-name' => $this->names->nameOf($message),
+            'event-id' => $message->eventId(),
         ];
 
         $this->topicFor($topic)->producev($partition, 0, $this->serializer->encode($message), $key, $headers);

@@ -27,11 +27,18 @@ final readonly class ConsumerFactory
     ) {
     }
 
-    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null): KafkaConsumer
+    /**
+     * @param array<string, string|int> $overrides extra librdkafka settings applied
+     *                                             last (e.g. a commit strategy's
+     *                                             enable.auto.commit); group.id is
+     *                                             always set and wins over them
+     */
+    public function create(string|KafkaProfile $profile, string $groupId, ?CallbackKit $callbacks = null, array $overrides = []): KafkaConsumer
     {
         $profile = $profile instanceof KafkaProfile ? $profile : $this->profiles->get($profile);
 
         $conf = $this->confBuilder->build($profile, [
+            ...$overrides,
             'group.id' => $groupId,
         ]);
         ($callbacks ?? new CallbackKit(new RebalanceCallback(), new ErrorCallback()))->attachTo($conf);
