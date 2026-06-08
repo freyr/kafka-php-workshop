@@ -7,7 +7,7 @@ namespace Workshop\Tests\Console;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
-use Workshop\Console\SchemaRegisterCommand;
+use Workshop\Console\Schema\SchemaRegisterCommand;
 use Workshop\Kafka\Serde\SchemaRegistryClient;
 use Workshop\Produce\MessageRouting;
 
