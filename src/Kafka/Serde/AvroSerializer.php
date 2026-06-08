@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workshop\Kafka\Serde;
 
 use FlixTech\AvroSerializer\Objects\RecordSerializer;
+use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
 
 /**
  * Block 3 serializer: the MessageSerializer seam over the Confluent AVRO wire
@@ -13,11 +14,12 @@ use FlixTech\AvroSerializer\Objects\RecordSerializer;
  * The Schema Registry plumbing — Guzzle client → registry → RecordSerializer — is
  * assembled as data in config/services.yaml and injected ready-made, so this class
  * is pure framing logic. encode() takes an AvroPayload (subject + schema +
- * enveloped record) and returns wire-format bytes, auto-registering missing
- * schemas/subjects on first encode — the workshop trade-off; production producers
- * usually register out of band so the registry stays the gate. decode() returns
- * the structured envelope, or null when the bytes are not Confluent-framed so a
- * dispatcher can skip non-AVRO records instead of crashing.
+ * enveloped record) and returns wire-format bytes. Schemas are NOT auto-registered:
+ * the registry stays a strict gate, so a subject must be registered out of band
+ * (bin/console schema:register) before its messages can be produced — encode throws
+ * a SchemaRegistryException otherwise. decode() returns the structured envelope, or
+ * null when the bytes are not Confluent-framed so a dispatcher can skip non-AVRO
+ * records instead of crashing.
  */
 final readonly class AvroSerializer implements MessageSerializer
 {
@@ -33,6 +35,10 @@ final readonly class AvroSerializer implements MessageSerializer
     ) {
     }
 
+    /**
+     * @throws \AvroSchemaParseException
+     * @throws SchemaRegistryException
+     */
     public function encode(mixed $payload): string
     {
         if (! $payload instanceof AvroPayload) {
@@ -53,6 +59,8 @@ final readonly class AvroSerializer implements MessageSerializer
      * decode failure throws; route that poison message to a DLQ.
      *
      * @return array<string, mixed>|null
+     *
+     * @throws SchemaRegistryException
      */
     public function decode(string $bytes): mixed
     {

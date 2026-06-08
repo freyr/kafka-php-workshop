@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Console;
 
+use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -66,8 +67,17 @@ final class EventProduceCommand extends Command
         $payload = new AvroPayload($route->subject, $route->schemaJson(), $message->envelope($name));
 
         $producer = $this->producers->create('producer.idempotent', $this->avro);
-        $producer->keyed($route->topic, $message->partitionKey(), $payload);
-        $producer->close();
+
+        try {
+            $producer->keyed($route->topic, $message->partitionKey(), $payload);
+            $producer->close();
+        } catch (SchemaRegistryException) {
+            $output->writeln(sprintf('<error>No schema registered for subject %s.</error>', $route->subject));
+            $output->writeln('Schemas are not auto-registered — register it first, then produce again:');
+            $output->writeln(sprintf('  <comment>bin/console schema:register %s</comment>', $type));
+
+            return Command::FAILURE;
+        }
 
         $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $name, $route->topic, $route->subject));
         $output->writeln('  key = ' . $message->partitionKey() . ' (message key / partition key)');

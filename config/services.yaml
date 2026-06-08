@@ -68,9 +68,13 @@ services:
     FlixTech\AvroSerializer\Objects\RecordSerializer:
         arguments:
             $registry: '@FlixTech\SchemaRegistryApi\Registry\CachedRegistry'
+            # Registration is OFF: the registry is a strict gate. Producers encode
+            # only against schemas already registered out of band (schema:register);
+            # an unregistered subject fails the encode instead of silently minting a
+            # version from whatever a producer first sends.
             $options:
-                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SCHEMAS: true
-                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SUBJECTS: true
+                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SCHEMAS: false
+                !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SUBJECTS: false
 
     # The Block 4 REST client gets its own Guzzle instance: a trailing-slash
     # base_uri so relative request paths resolve, and http_errors=false so it can

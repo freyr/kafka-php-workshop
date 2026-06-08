@@ -44,7 +44,7 @@ final class SchemaVersionsCommand extends Command
 
         if ([] === $versions) {
             $output->writeln("subject <info>{$subject}</info>: <comment>not registered yet</comment>");
-            $output->writeln('Register it by producing once: <comment>bin/console events:produce ' . $type . '</comment>');
+            $output->writeln('Register it: <comment>bin/console schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }

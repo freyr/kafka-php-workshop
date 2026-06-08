@@ -62,13 +62,14 @@ final class SchemaCheckCommand extends Command
 
         if ($result['firstVersion']) {
             $output->writeln('  <comment>no version registered yet</comment> — first schema is always accepted, nothing to check.');
-            $output->writeln('  Register it by producing once: <comment>bin/console events:produce ' . $type . '</comment>');
+            $output->writeln('  Register it: <comment>bin/console schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }
 
         if ($result['compatible']) {
             $output->writeln('  <info>✓ COMPATIBLE</info> with the latest registered version — safe to register.');
+            $output->writeln('  Register it: <comment>bin/console schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }

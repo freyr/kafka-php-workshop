@@ -6,23 +6,56 @@ namespace Workshop\Kafka\Serde;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\GuzzleException;
+use Psr\Http\Message\RequestInterface;
 
 use function FlixTech\SchemaRegistryApi\Requests\allSubjectVersionsRequest;
 use function FlixTech\SchemaRegistryApi\Requests\checkSchemaCompatibilityAgainstVersionRequest;
+use function FlixTech\SchemaRegistryApi\Requests\registerNewSchemaVersionWithSubjectRequest;
 
 /**
- * Thin Schema Registry REST client for the Block 4 tooling demos. Wraps the
- * flix-tech PSR-7 request builders with a Guzzle client so the workshop can
- * show the two operations that matter for schema evolution — the
- * pre-registration compatibility check (the CI gate) and listing a subject's
- * registered versions — without hand-rolling curl. Schema *encoding* still goes
- * through {@see AvroSerializer}; this client never touches the wire format.
+ * Thin Schema Registry REST client. Wraps the flix-tech PSR-7 request builders
+ * with a Guzzle client so the workshop can drive the three operations that matter
+ * for schema evolution — registering a schema (the explicit, out-of-band path a
+ * production deploy/CI runs), the pre-registration compatibility check (the CI
+ * gate), and listing a subject's registered versions — without hand-rolling curl.
+ * Schema *encoding* goes through {@see AvroSerializer}; this client never touches
+ * the wire format.
  */
 final readonly class SchemaRegistryClient
 {
     public function __construct(
         private Client $http,
     ) {
+    }
+
+    /**
+     * Register $schemaJson as a version of $subject and return the globally unique
+     * schema id the registry assigns. The registry enforces the subject's
+     * compatibility level server-side — a breaking schema is rejected (409) and
+     * never stored. Registration is idempotent: re-registering an identical schema
+     * returns the existing id without minting a new version.
+     *
+     * This is the production registration path — explicit and out of band — that
+     * replaces auto-registering schemas on first produce.
+     *
+     * @throws GuzzleException
+     * @throws SchemaRegistrationException when the registry refuses the schema
+     */
+    public function register(string $subject, string $schemaJson): int
+    {
+        $response = $this->send(registerNewSchemaVersionWithSubjectRequest($schemaJson, $subject));
+
+        if (200 !== $response['status']) {
+            throw SchemaRegistrationException::rejected($subject, $response['status'], $response['body']);
+        }
+
+        $body = json_decode($response['body'], true);
+        if (! \is_array($body) || ! \is_int($body['id'] ?? null)) {
+            throw SchemaRegistrationException::unexpectedBody($subject, $response['body']);
+        }
+
+        return $body['id'];
     }
 
     /**
@@ -34,6 +67,8 @@ final readonly class SchemaRegistryClient
      *                                                     the subject has no
      *                                                     versions yet, so there
      *                                                     is nothing to check
+     *
+     * @throws GuzzleException
      */
     public function checkCompatibility(string $subject, string $schemaJson): array
     {
@@ -61,6 +96,8 @@ final readonly class SchemaRegistryClient
      * List the registered version numbers for a subject, oldest first.
      *
      * @return int[] empty when the subject is not registered yet
+     *
+     * @throws GuzzleException
      */
     public function versions(string $subject): array
     {
@@ -76,14 +113,13 @@ final readonly class SchemaRegistryClient
     }
 
     /**
-     * @param \Psr\Http\Message\RequestInterface $request
-     *
      * @return array{status: int, body: string}
+     *
+     * @throws GuzzleException
      */
-    private function send(object $request): array
+    private function send(RequestInterface $request): array
     {
         try {
-            /** @var \Psr\Http\Message\RequestInterface $request */
             $response = $this->http->send($request);
         } catch (ConnectException $e) {
             throw new \RuntimeException('Schema Registry is unreachable. Is the stack up? Try `make create`.', previous: $e);

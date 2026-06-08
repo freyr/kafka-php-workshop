@@ -94,11 +94,12 @@ bin/console events:consume  <topic> [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # deco
 bin/console events:dispatch [topic] [-g GROUP] [-m MAX] [-t TIMEOUT_MS]   # route by event_type
 ```
 
-`events:produce` builds the metadata+payload envelope, AVRO-encodes it,
-auto-registers the subject (the fully-qualified record name —
-`RecordNameStrategy`, e.g. `com.ecommerce.orders.v1.order_created`), and keys the
-message by `aggregate_id`. `events:consume` decodes via the registry and prints
-the envelope.
+`events:produce` builds the metadata+payload envelope, AVRO-encodes it against
+the subject's **registered** schema (the fully-qualified record name —
+`RecordNameStrategy`, e.g. `com.ecommerce.orders.order_created`), and keys the
+message by `aggregate_id`. Schemas are **not** auto-registered on produce —
+register them explicitly first with `schema:register` (Block 4), or the encode
+fails. `events:consume` decodes via the registry and prints the envelope.
 
 **Multiple event types per topic.** `order-created`, `order-updated`, and
 `order-cancelled` all live on the **same** `enet.ecommerce.orders` topic — each
@@ -114,9 +115,15 @@ crashing. `order-created` prints a ready-to-paste lifecycle to drive the demo
 For Block 4, two commands inspect schema evolution against the registry:
 
 ```sh
-bin/console schema:check <type> <schema-file>   # is a candidate .avsc compatible with the latest? (CI gate; non-zero exit on fail)
-bin/console schema:versions <type>              # list the registered version lineage [1, 2, …]
+bin/console schema:register <type> [schema-file]   # register a subject's schema (explicit, out-of-band production path → assigns the schema id)
+bin/console schema:check    <type> <schema-file>   # is a candidate .avsc compatible with the latest? (CI gate; non-zero exit on fail)
+bin/console schema:versions <type>                 # list the registered version lineage [1, 2, …]
 ```
+
+The production flow is **check → register → produce**: `schema:check` gates a
+candidate schema in CI, `schema:register` registers it (the registry assigns the
+id and enforces compatibility server-side), and only then can `events:produce`
+encode against it.
 
 `schema:check` is the pre-registration compatibility check (read-only). Demo
 schemas live in `schemas/orders/evolution/` — `OrderCreated-v2-compatible.avsc`
