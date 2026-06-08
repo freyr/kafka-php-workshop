@@ -20,9 +20,6 @@ WORKSHOP_TOPICS=(
   "enet.ecommerce.orders:6"            # key=orderId   — order lifecycle, ordered per order
   "enet.ecommerce.payments:6"          # key=orderId   — correlate payments with their order
   "enet.ecommerce.inventory:12"        # key=productId — sale-spike headroom
-  "enet.ecommerce.users:6"             # key=userId    — low volume
-  "enet.ecommerce.notifications:6"     # key=null      — round-robin, fire-and-forget
-  "enet.internal.dead-letters:3"       # key=preserved — shared DLT (Blocks 5-7), near-zero volume
 
   # Block 6 — outbox / CDC. Debezium routes outbox rows to the .outbox.<Aggregate>
   # topic; schema-history is the connector's internal DDL log. bin/debezium-register
@@ -30,10 +27,4 @@ WORKSHOP_TOPICS=(
   # means a single bin/kafka-setup provisions the whole workshop.
   "enet.ecommerce.outbox.Order:6"      # key=aggregateId — CDC output for the Order aggregate
   "schema-history.outbox:1"            # key=null      — Debezium schema-history log
-
-  # Block 7 — retry-topic chain for enet.ecommerce.orders. 1 partition each: only
-  # failed messages land here, so throughput is tiny. Demo-short delays (5s, 30s);
-  # production uses minutes (1m / 5m / 30m). DLT is the shared one from Block 2.
-  "enet.ecommerce.orders.retry.5s:1"   # key=preserved — first retry tier
-  "enet.ecommerce.orders.retry.30s:1"  # key=preserved — second retry tier
 )
