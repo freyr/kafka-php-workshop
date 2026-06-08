@@ -12,7 +12,7 @@ final class OrderCreatedTest extends TestCase
 {
     public function testNamePartitionKeyAndPayload(): void
     {
-        $message = new OrderCreated('ord-123');
+        $message = OrderCreated::create('ord-123');
 
         self::assertSame('order-created', (new MessageNameResolver())->nameOf($message));
         self::assertSame('ord-123', $message->partitionKey());

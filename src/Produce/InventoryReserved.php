@@ -7,25 +7,11 @@ namespace Workshop\Produce;
 #[MessageName('inventory-reserved')]
 final class InventoryReserved extends Message
 {
-    private readonly string $reservationId;
-
-    public function __construct(
-        private readonly string $orderId,
-    ) {
-        parent::__construct();
-        $this->reservationId = self::generateId('rsv');
-    }
-
-    public function partitionKey(): string
+    public static function create(string $orderId): self
     {
-        return $this->orderId;
-    }
-
-    public function toPayload(): array
-    {
-        return [
-            'reservation_id' => $this->reservationId,
-            'order_id' => $this->orderId,
+        return new self($orderId, [
+            'reservation_id' => self::generateId('rsv'),
+            'order_id' => $orderId,
             'reserved_items' => [
                 [
                     'product_id' => 'prod-555',
@@ -37,6 +23,6 @@ final class InventoryReserved extends Message
             ],
             'reserved_at' => self::nowMillis(),
             'expires_at' => self::nowMillis() + 900_000,
-        ];
+        ]);
     }
 }

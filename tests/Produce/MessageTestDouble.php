@@ -10,22 +10,11 @@ use Workshop\Produce\MessageName;
 #[MessageName('order-created')]
 final class MessageTestDouble extends Message
 {
-    public function __construct(
-        private readonly string $id,
-    ) {
-        parent::__construct();
-    }
-
-    public function partitionKey(): string
+    public static function create(string $id): self
     {
-        return $this->id;
-    }
-
-    public function toPayload(): array
-    {
-        return [
-            'order_id' => $this->id,
+        return new self($id, [
+            'order_id' => $id,
             'status' => 'NEW',
-        ];
+        ]);
     }
 }

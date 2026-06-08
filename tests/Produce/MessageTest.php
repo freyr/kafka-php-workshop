@@ -20,7 +20,7 @@ final class MessageTest extends TestCase
 
     public function testEnvelopeOnNamedMessage(): void
     {
-        $message = new MessageTestDouble('ord-1');
+        $message = MessageTestDouble::create('ord-1');
 
         $envelope = $message->envelope('order-created');
 
@@ -43,23 +43,19 @@ final class MessageTest extends TestCase
         self::assertInstanceOf(SerializableMessage::class, $message);
     }
 
-    public function testEnvelopeRejectsAReservedMetadataKey(): void
+    public function testRejectsAReservedMetadataKeyInPayload(): void
     {
-        $message = new class extends Message {
-            public function partitionKey(): string
-            {
-                return 'x';
-            }
+        $this->expectException(\LogicException::class);
 
-            public function toPayload(): array
+        // The metadata key is reserved by the envelope, so a payload carrying it
+        // is rejected at construction.
+        new class extends Message {
+            public function __construct()
             {
-                return [
+                parent::__construct('x', [
                     'metadata' => 'oops',
-                ];
+                ]);
             }
         };
-
-        $this->expectException(\LogicException::class);
-        $message->envelope('order-created');
     }
 }

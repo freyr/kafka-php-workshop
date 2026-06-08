@@ -7,26 +7,14 @@ namespace Workshop\Produce;
 #[MessageName('order-updated')]
 final class OrderUpdated extends Message
 {
-    public function __construct(
-        private readonly string $orderId,
-        private readonly string $status = 'PAID',
-    ) {
-        parent::__construct();
-    }
-
-    public function partitionKey(): string
+    public static function create(string $orderId, string $status = 'PAID'): self
     {
-        return $this->orderId;
-    }
-
-    public function toPayload(): array
-    {
-        return [
-            'order_id' => $this->orderId,
-            'status' => $this->status,
+        return new self($orderId, [
+            'order_id' => $orderId,
+            'status' => $status,
             'previous_status' => 'CREATED',
             'updated_at' => self::nowMillis(),
             'note' => null,
-        ];
+        ]);
     }
 }

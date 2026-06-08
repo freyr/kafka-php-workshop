@@ -7,37 +7,20 @@ namespace Workshop\Produce;
 #[MessageName('payment-processed')]
 final class PaymentProcessed extends Message
 {
-    private readonly string $paymentId;
-    private readonly bool $failed;
-    private readonly ?string $gatewayTransactionId;
-
-    public function __construct(
-        private readonly string $orderId,
-        private readonly string $status = 'SUCCEEDED',
-    ) {
-        parent::__construct();
-        $this->paymentId = self::generateId('pay');
-        $this->failed = 'SUCCEEDED' !== $status;
-        $this->gatewayTransactionId = $this->failed ? null : self::generateId('txn');
-    }
-
-    public function partitionKey(): string
+    public static function create(string $orderId, string $status = 'SUCCEEDED'): self
     {
-        return $this->orderId;
-    }
+        $failed = 'SUCCEEDED' !== $status;
 
-    public function toPayload(): array
-    {
-        return [
-            'payment_id' => $this->paymentId,
-            'order_id' => $this->orderId,
-            'status' => $this->status,
+        return new self($orderId, [
+            'payment_id' => self::generateId('pay'),
+            'order_id' => $orderId,
+            'status' => $status,
             'payment_method' => 'BLIK',
             'amount' => self::money(8606),
-            'gateway_transaction_id' => $this->gatewayTransactionId,
-            'failure_reason' => $this->failed ? 'Insufficient funds' : null,
-            'failure_code' => $this->failed ? 'INSUFFICIENT_FUNDS' : null,
+            'gateway_transaction_id' => $failed ? null : self::generateId('txn'),
+            'failure_reason' => $failed ? 'Insufficient funds' : null,
+            'failure_code' => $failed ? 'INSUFFICIENT_FUNDS' : null,
             'processed_at' => self::nowMillis(),
-        ];
+        ]);
     }
 }

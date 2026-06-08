@@ -7,30 +7,51 @@ namespace Workshop\Produce;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Base for every producible message. It supplies the envelope autonomously:
- * a UUIDv7 event_id and a UTC epoch-millis timestamp are generated at
- * construction. The wire name is NOT read here — it is resolved once per class
- * from the concrete class's #[MessageName] attribute by MessageNameResolver at
- * the serialization stage, and passed into envelope(). Concrete messages only
- * describe their business payload (toPayload) and their Kafka partition key
- * (partitionKey).
+ * Base for every producible message. A concrete message is built through its
+ * static create() named constructor, which hands the base two things: the Kafka
+ * partition key and the business payload as a plain array. The base supplies the
+ * envelope autonomously — a UUIDv7 event_id and a UTC epoch-millis timestamp are
+ * generated at construction. The wire name is NOT read here; it is resolved once
+ * per class from the concrete class's #[MessageName] attribute by
+ * MessageNameResolver at the serialization stage and passed into envelope().
  */
 abstract class Message implements SerializableMessage
 {
     private readonly string $eventId;
     private readonly int $timestamp;
 
-    public function __construct()
-    {
+    /**
+     * @param string               $partitionKey the Kafka message key — drives
+     *                                           partitioning and ordering;
+     *                                           intentionally kept out of the
+     *                                           payload, a transport concern
+     * @param array<string, mixed> $payload      the business payload (lower_snake
+     *                                           wire field names)
+     */
+    protected function __construct(
+        private readonly string $partitionKey,
+        private readonly array $payload,
+    ) {
+        if (array_key_exists('metadata', $payload)) {
+            throw new \LogicException(sprintf('%s payload must not contain a "metadata" key — it is reserved by the envelope.', static::class));
+        }
+
         $this->eventId = Uuid::v7()->toRfc4122();
         $this->timestamp = self::nowMillis();
     }
 
+    public function partitionKey(): string
+    {
+        return $this->partitionKey;
+    }
+
     /**
-     * The Kafka message key. Drives partitioning and ordering; intentionally kept
-     * out of the payload — it is a transport concern, not business data.
+     * @return array<string, mixed>
      */
-    abstract public function partitionKey(): string;
+    public function toPayload(): array
+    {
+        return $this->payload;
+    }
 
     /**
      * The full enveloped record that goes on the wire: a minimal metadata record
@@ -41,18 +62,13 @@ abstract class Message implements SerializableMessage
      */
     final public function envelope(string $name): array
     {
-        $payload = $this->toPayload();
-        if (array_key_exists('metadata', $payload)) {
-            throw new \LogicException(sprintf('%s::toPayload() must not return a "metadata" key — it is reserved by the envelope.', static::class));
-        }
-
         return [
             'metadata' => [
                 'event_id' => $this->eventId,
                 'timestamp' => $this->timestamp,
                 'name' => $name,
             ],
-            ...$payload,
+            ...$this->payload,
         ];
     }
 

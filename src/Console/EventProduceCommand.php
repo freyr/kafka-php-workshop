@@ -98,11 +98,11 @@ final class EventProduceCommand extends Command
     private function message(string $type, string $orderId, ?string $status, ?string $reason): ?Message
     {
         return match ($type) {
-            'order-created' => new OrderCreated($orderId),
-            'order-updated' => new OrderUpdated($orderId, $status ?? 'PAID'),
-            'order-cancelled' => new OrderCancelled($orderId, $reason ?? 'CUSTOMER_REQUEST'),
-            'payment-processed' => new PaymentProcessed($orderId, $status ?? 'SUCCEEDED'),
-            'inventory-reserved' => new InventoryReserved($orderId),
+            'order-created' => OrderCreated::create($orderId),
+            'order-updated' => OrderUpdated::create($orderId, $status ?? 'PAID'),
+            'order-cancelled' => OrderCancelled::create($orderId, $reason ?? 'CUSTOMER_REQUEST'),
+            'payment-processed' => PaymentProcessed::create($orderId, $status ?? 'SUCCEEDED'),
+            'inventory-reserved' => InventoryReserved::create($orderId),
             default => null,
         };
     }

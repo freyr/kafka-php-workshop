@@ -7,21 +7,10 @@ namespace Workshop\Produce;
 #[MessageName('order-created')]
 final class OrderCreated extends Message
 {
-    public function __construct(
-        private readonly string $orderId,
-    ) {
-        parent::__construct();
-    }
-
-    public function partitionKey(): string
+    public static function create(string $orderId): self
     {
-        return $this->orderId;
-    }
-
-    public function toPayload(): array
-    {
-        return [
-            'order_id' => $this->orderId,
+        return new self($orderId, [
+            'order_id' => $orderId,
             'customer' => [
                 'customer_id' => 'cust-9876',
                 'email' => 'jan@example.com',
@@ -52,6 +41,6 @@ final class OrderCreated extends Message
             ],
             'placed_at' => self::nowMillis(),
             'notes' => null,
-        ];
+        ]);
     }
 }
