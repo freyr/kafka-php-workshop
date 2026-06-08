@@ -2,7 +2,7 @@
   "type": "record",
   "name": "OrderCancelled",
   "namespace": "com.ecommerce.orders",
-  "doc": "Published when an order is cancelled. Shares the enet.ecommerce.orders topic with OrderCreated/OrderUpdated — multiple event types per topic, each its own Schema Registry subject under RecordNameStrategy. Self-contained schema — EventMetadata and Money are inlined so it registers as a single subject; canonical copies live under schemas/common/.",
+  "doc": "Published when an order is cancelled. Shares the enet.ecommerce.orders topic with OrderCreated/OrderUpdated — multiple event types per topic, each its own Schema Registry subject under RecordNameStrategy. Self-contained schema — EventMetadata and Money are inlined so it registers as a single subject.",
   "fields": [
     {
       "name": "metadata",

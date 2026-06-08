@@ -140,7 +140,7 @@ bin/console topic:describe <topic>                                # partition co
 │   ├── Consume/             # read-model DTOs + denormalizer
 │   ├── Kafka/               # Client, Serde, Config, Callback, Runtime, Admin
 │   └── Framework/           # Kernel + DI extension
-├── schemas/                 # AVRO: common/ orders/ (+evolution/) payments/ inventory/
+├── schemas/                 # AVRO: orders/ (+evolution/) payments/ inventory/ audit/
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # facilitator notes (gitignored)
 ```

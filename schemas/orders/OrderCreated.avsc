@@ -2,7 +2,7 @@
   "type": "record",
   "name": "OrderCreated",
   "namespace": "com.ecommerce.orders",
-  "doc": "Published when a customer completes checkout. Fat integration event: consumers are self-sufficient. Self-contained schema — shared types (EventMetadata, Money, Address) are inlined so it registers as a single subject; canonical copies live under schemas/common/.",
+  "doc": "Published when a customer completes checkout. Fat integration event: consumers are self-sufficient. Self-contained schema — shared types (EventMetadata, Money, Address) are inlined so it registers as a single subject.",
   "fields": [
     {
       "name": "metadata",

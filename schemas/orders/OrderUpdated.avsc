@@ -2,7 +2,7 @@
   "type": "record",
   "name": "OrderUpdated",
   "namespace": "com.ecommerce.orders",
-  "doc": "Published when an order's status changes (paid, packed, shipped, …). Shares the enet.ecommerce.orders topic with OrderCreated/OrderCancelled — multiple event types per topic, each its own Schema Registry subject under RecordNameStrategy. Self-contained schema — EventMetadata is inlined so it registers as a single subject; the canonical copy lives under schemas/common/.",
+  "doc": "Published when an order's status changes (paid, packed, shipped, …). Shares the enet.ecommerce.orders topic with OrderCreated/OrderCancelled — multiple event types per topic, each its own Schema Registry subject under RecordNameStrategy. Self-contained schema — EventMetadata is inlined so it registers as a single subject.",
   "fields": [
     {
       "name": "metadata",

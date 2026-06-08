@@ -2,7 +2,7 @@
   "type": "record",
   "name": "OrderAudited",
   "namespace": "com.ecommerce.audit",
-  "doc": "Minimal append-only audit event for the consumer-group offsets demo. Produced to the single-partition enet.ecommerce.audit topic so each consumer group's committed offset advances 1:1 with messages — simple offset math, observable per group in kafka-ui. Self-contained: EventMetadata is inlined so it registers as a single subject; the canonical copy lives under schemas/common/.",
+  "doc": "Minimal append-only audit event for the consumer-group offsets demo. Produced to the single-partition enet.ecommerce.audit topic so each consumer group's committed offset advances 1:1 with messages — simple offset math, observable per group in kafka-ui. Self-contained: EventMetadata is inlined so it registers as a single subject.",
   "fields": [
     {
       "name": "metadata",
