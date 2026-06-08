@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "OrderAudited",
+  "namespace": "com.ecommerce.audit",
+  "doc": "Minimal append-only audit event for the consumer-group offsets demo. Produced to the single-partition enet.ecommerce.audit topic so each consumer group's committed offset advances 1:1 with messages — simple offset math, observable per group in kafka-ui. Self-contained: EventMetadata is inlined so it registers as a single subject; the canonical copy lives under schemas/common/.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
+        ]
+      }
+    },
+    {"name": "order_id", "type": "string", "doc": "Business identifier for the audited order."},
+    {"name": "action", "type": "string", "default": "observed", "doc": "What was audited; defaulted — the demo emits a stream of representative events."}
+  ]
+}

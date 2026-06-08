@@ -19,6 +19,13 @@ workshop:
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_cancelled
             schema: '%kafka.schema_dir%/orders/OrderCancelled.avsc'
+        # Single-partition audit log for the consumer-group offsets demo
+        # (demo:offsets:*). One partition → each consumer group's committed
+        # offset tracks the stream 1:1, easy to read per group in kafka-ui.
+        order.audited:
+            topic: enet.ecommerce.audit
+            subject: com.ecommerce.audit.order_audited
+            schema: '%kafka.schema_dir%/audit/OrderAudited.avsc'
         payment.processed:
             topic: enet.ecommerce.payments
             subject: com.ecommerce.payments.payment_processed

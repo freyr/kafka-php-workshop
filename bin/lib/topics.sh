@@ -20,6 +20,7 @@ WORKSHOP_TOPICS=(
   "enet.ecommerce.orders:6"            # key=orderId   — order lifecycle, ordered per order
   "enet.ecommerce.payments:6"          # key=orderId   — correlate payments with their order
   "enet.ecommerce.inventory:12"        # key=productId — sale-spike headroom
+  "enet.ecommerce.audit:1"             # key=orderId   — single-partition audit log; consumer-group offsets demo (demo:offsets:*)
 
   # Block 6 — outbox / CDC. Debezium routes outbox rows to the .outbox.<Aggregate>
   # topic; schema-history is the connector's internal DDL log. bin/debezium-register

@@ -16,6 +16,8 @@ recreate: destroy create setup ## destroy + create + provision topics
 ##@ Topic provisioning
 setup: ## create every workshop topic across all blocks (idempotent)
 	bin/kafka-setup
+	docker compose run --rm php php bin/console kafka:schema:register --all
+
 teardown: ## delete every workshop topic created by setup (idempotent)
 	bin/kafka-teardown
 

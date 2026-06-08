@@ -43,11 +43,17 @@
         "ecs-fix": "ecs check --fix",
         "phpstan": "phpstan analyse --memory-limit=512M",
         "demo:rebalance:consumer": "php bin/console kafka:consume enet.ecommerce.orders -g rebalance-demo --commit=per-message --from=committed --interval 300 -v",
-        "demo:rebalance:producer": "php bin/console kafka:produce:sample --message-name order.created --interval 200"
+        "demo:rebalance:producer": "php bin/console kafka:produce:sample --message-name order.created --interval 200",
+        "demo:offsets:producer": "php bin/console kafka:produce:sample --message-name order.audited --interval 500",
+        "demo:offsets:consumer-a": "php bin/console kafka:consume enet.ecommerce.audit -g offsets-demo-a --commit=auto --from=committed -v",
+        "demo:offsets:consumer-b": "php bin/console kafka:consume enet.ecommerce.audit -g offsets-demo-b --commit=auto --from=committed -v"
     },
     "scripts-descriptions": {
         "demo:rebalance:consumer": "Join the shared 'rebalance-demo' group on enet.ecommerce.orders and tail forever with verbose ⇄ assign/revoke output. Run in several terminals to watch cooperative-sticky rebalancing as members join/leave.",
-        "demo:rebalance:producer": "Stream order.created events to enet.ecommerce.orders so the rebalance-demo consumers have data flowing across all 6 partitions."
+        "demo:rebalance:producer": "Stream order.created events to enet.ecommerce.orders so the rebalance-demo consumers have data flowing across all 6 partitions.",
+        "demo:offsets:producer": "Stream order.audited events to the single-partition enet.ecommerce.audit topic so both offsets-demo consumer groups have a backlog to read.",
+        "demo:offsets:consumer-a": "Consumer group 'offsets-demo-a' on enet.ecommerce.audit with Kafka-default auto-commit. Run alongside consumer-b and watch each group's committed offset advance independently in kafka-ui.",
+        "demo:offsets:consumer-b": "Second, independent consumer group 'offsets-demo-b' on the same single-partition topic — proves consumer groups track their own offsets separately from group A."
     },
     "config": {
         "sort-packages": true,
