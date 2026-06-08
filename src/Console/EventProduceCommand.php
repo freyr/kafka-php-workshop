@@ -13,12 +13,9 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Uid\Uuid;
 use Workshop\Kafka\Client\ProducerFactory;
-use Workshop\Kafka\Serde\AvroPayload;
 use Workshop\Kafka\Serde\AvroSerializer;
 use Workshop\Produce\InventoryReserved;
 use Workshop\Produce\Message;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
 use Workshop\Produce\OrderCancelled;
 use Workshop\Produce\OrderCreated;
 use Workshop\Produce\OrderUpdated;
@@ -32,9 +29,7 @@ final class EventProduceCommand extends Command
 {
     public function __construct(
         private readonly ProducerFactory $producers,
-        private readonly MessageRouting $routing,
         private readonly AvroSerializer $avro,
-        private readonly MessageNameResolver $names,
     ) {
         parent::__construct();
     }
@@ -62,24 +57,20 @@ final class EventProduceCommand extends Command
             return Command::INVALID;
         }
 
-        $name = $this->names->nameOf($message);
-        $route = $this->routing->for($name);
-        $payload = new AvroPayload($route->subject, $route->schemaJson(), $message->envelope($name));
-
         $producer = $this->producers->create('producer.idempotent', $this->avro);
 
         try {
-            $producer->keyed($route->topic, $message->partitionKey(), $payload);
+            $produced = $producer->produce($message);
             $producer->close();
         } catch (SchemaRegistryException) {
-            $output->writeln(sprintf('<error>No schema registered for subject %s.</error>', $route->subject));
+            $output->writeln('<error>No schema registered for this event.</error>');
             $output->writeln('Schemas are not auto-registered — register it first, then produce again:');
             $output->writeln(sprintf('  <comment>bin/console schema:register %s</comment>', $type));
 
             return Command::FAILURE;
         }
 
-        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $name, $route->topic, $route->subject));
+        $output->writeln(sprintf('produced <info>%s</info> → %s (%s)', $produced->name, $produced->route->topic, $produced->route->subject));
         $output->writeln('  key = ' . $message->partitionKey() . ' (message key / partition key)');
 
         if ($message instanceof OrderCreated) {

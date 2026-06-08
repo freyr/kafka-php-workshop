@@ -14,6 +14,8 @@ use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaTuning;
 use Workshop\Kafka\Config\ProfileRegistry;
 use Workshop\Kafka\Serde\JsonSerializer;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
 
 /**
  * The input-validation branches return Command::INVALID before any client is
@@ -26,7 +28,6 @@ final class ProduceCommandTest extends TestCase
         $tester = $this->tester();
 
         $tester->execute([
-            'topic' => 'demo',
             '--key' => 'a,b',
             '--key-cardinality' => '4',
         ]);
@@ -40,7 +41,6 @@ final class ProduceCommandTest extends TestCase
         $tester = $this->tester();
 
         $tester->execute([
-            'topic' => 'demo',
             '--key-cardinality' => '0',
         ]);
 
@@ -59,8 +59,10 @@ final class ProduceCommandTest extends TestCase
         $factory = new ProducerFactory(
             new ConfBuilder('broker.test:29092', $noop),
             new ProfileRegistry(new KafkaTuning()),
+            new MessageRouting([]),
+            new MessageNameResolver(),
         );
 
-        return new CommandTester(new ProduceCommand($factory, new JsonSerializer()));
+        return new CommandTester(new ProduceCommand($factory, new JsonSerializer(new MessageNameResolver())));
     }
 }

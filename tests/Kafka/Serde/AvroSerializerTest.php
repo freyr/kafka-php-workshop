@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Workshop\Tests\Kafka\Serde;
 
+use FlixTech\AvroSerializer\Objects\RecordSerializer;
 use PHPUnit\Framework\TestCase;
-use Workshop\Kafka\Serde\AvroPayload;
 use Workshop\Kafka\Serde\AvroSerializer;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
+use Workshop\Produce\OrderCreated;
 
 final class AvroSerializerTest extends TestCase
 {
@@ -15,8 +18,8 @@ final class AvroSerializerTest extends TestCase
     protected function setUp(): void
     {
         // The guard tests below never reach the wrapped RecordSerializer (non-AVRO
-        // bytes short-circuit, bad payloads throw first), so instantiate without the
-        // constructor — no Guzzle client, no registry, no third-party deprecation.
+        // bytes short-circuit), so instantiate without the constructor — no Guzzle
+        // client, no registry, no third-party deprecation.
         $this->serializer = (new \ReflectionClass(AvroSerializer::class))->newInstanceWithoutConstructor();
     }
 
@@ -37,22 +40,15 @@ final class AvroSerializerTest extends TestCase
         self::assertNull($this->serializer->decode("\x01\x00\x00\x00\x01payload"));
     }
 
-    public function testEncodeRejectsANonAvroPayload(): void
+    public function testEncodeThrowsForAnUnroutedMessage(): void
     {
+        // The route is resolved before the RecordSerializer is touched, so an
+        // unrouted message fails fast — no registry contact, stub serializer fine.
+        $records = (new \ReflectionClass(RecordSerializer::class))->newInstanceWithoutConstructor();
+        $serializer = new AvroSerializer($records, new MessageNameResolver(), new MessageRouting([]));
+
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->serializer->encode('just a string');
-    }
-
-    public function testAvroPayloadCarriesSubjectSchemaAndRecord(): void
-    {
-        $payload = new AvroPayload('com.ecommerce.orders.v1.order_created', '{"type":"record"}', [
-            'k' => 'v',
-        ]);
-
-        self::assertSame('com.ecommerce.orders.v1.order_created', $payload->subject);
-        self::assertSame([
-            'k' => 'v',
-        ], $payload->record);
+        $serializer->encode(OrderCreated::create('ord-1'));
     }
 }

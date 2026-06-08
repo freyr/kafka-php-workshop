@@ -19,14 +19,13 @@ services:
 
     # PSR-4 autodiscovery for the pure php-rdkafka layer (Blocks 1-3). The value
     # objects, enums and callback/client wrappers are constructed by the factories
-    # (never injected), so they are excluded just like Topics.
+    # (never injected), so they are excluded.
     Workshop\Kafka\:
         resource: '../src/Kafka/'
         exclude:
             - '../src/Kafka/Config/ClientRole.php'
             - '../src/Kafka/Config/KafkaSetting.php'
             - '../src/Kafka/Config/KafkaProfile.php'
-            - '../src/Kafka/Config/Topics.php'
             - '../src/Kafka/Callback'
             - '../src/Kafka/Runtime/CommitPolicy.php'
             - '../src/Kafka/Runtime/RunLimits.php'

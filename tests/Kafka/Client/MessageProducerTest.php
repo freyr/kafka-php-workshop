@@ -7,22 +7,27 @@ namespace Workshop\Tests\Kafka\Client;
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Client\MessageProducer;
 use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Produce\Message;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
+use Workshop\Produce\OrderCreated;
+use Workshop\Produce\TextMessage;
 
 final class MessageProducerTest extends TestCase
 {
-    public function testEachSendEncodesThePayloadThroughTheSerializer(): void
+    public function testEachSendEncodesTheMessageThroughTheSerializer(): void
     {
         $spy = new class implements MessageSerializer {
             /**
-             * @var list<mixed>
+             * @var list<Message>
              */
             public array $encoded = [];
 
-            public function encode(mixed $payload): string
+            public function encode(Message $payload): string
             {
                 $this->encoded[] = $payload;
 
-                return 'ENC:' . (is_scalar($payload) ? $payload : '');
+                return 'ENC';
             }
 
             public function decode(string $bytes): mixed
@@ -31,14 +36,44 @@ final class MessageProducerTest extends TestCase
             }
         };
 
-        $producer = new MessageProducer($this->localProducer(), $spy);
+        $routing = new MessageRouting([
+            'text' => [
+                'type' => 'json',
+                'topic' => 'demo-topic',
+            ],
+        ]);
+        $producer = new MessageProducer($this->localProducer(), $spy, $routing, new MessageNameResolver());
 
-        $producer->keyed('demo-topic', 'alice', 'order-1');
-        $producer->unkeyed('demo-topic', 'order-2');
-        $producer->toPartition('demo-topic', 0, 'order-3');
+        $keyed = TextMessage::create(1, 'alice', 'order-1');
+        $unkeyed = TextMessage::create(2, null, 'order-2');
 
-        // Every send routes the payload through the serializer before it is queued.
-        self::assertSame(['order-1', 'order-2', 'order-3'], $spy->encoded);
+        $producer->produce($keyed);
+        $producer->produce($unkeyed, true);
+
+        // Every send routes the message through the serializer before it is queued.
+        self::assertSame([$keyed, $unkeyed], $spy->encoded);
+    }
+
+    public function testProduceThrowsForAnUnroutedMessage(): void
+    {
+        $spy = new class implements MessageSerializer {
+            public function encode(Message $payload): string
+            {
+                return 'ENC';
+            }
+
+            public function decode(string $bytes): mixed
+            {
+                return $bytes;
+            }
+        };
+
+        // The route is resolved before any send, so an unrouted message fails fast.
+        $producer = new MessageProducer($this->localProducer(), $spy, new MessageRouting([]), new MessageNameResolver());
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $producer->produce(OrderCreated::create('ord-1'));
     }
 
     /**

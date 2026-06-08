@@ -6,66 +6,81 @@ namespace Workshop\Tests\Kafka\Serde;
 
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Serde\JsonSerializer;
+use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\TextMessage;
 
 final class JsonSerializerTest extends TestCase
 {
-    public function testEncodesATypedMessageToLowerSnakeJson(): void
+    private JsonSerializer $serializer;
+
+    protected function setUp(): void
     {
-        $serializer = new JsonSerializer();
+        $this->serializer = new JsonSerializer(new MessageNameResolver());
+    }
 
-        $json = $serializer->encode(new TextMessage(sequence: 1, key: 'a', text: 'event-1', timestamp: 1717840000123));
+    public function testEncodesAMessageToItsEnvelopedJson(): void
+    {
+        $json = $this->serializer->encode(TextMessage::create(1, 'a', 'event-1'));
 
-        self::assertJsonStringEqualsJsonString(
-            '{"sequence":1,"key":"a","text":"event-1","timestamp":1717840000123}',
-            $json,
-        );
+        /** @var array<string, mixed> $decoded */
+        $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+
+        // The business payload travels flat alongside the metadata envelope.
+        self::assertSame([
+            'sequence' => 1,
+            'key' => 'a',
+            'text' => 'event-1',
+        ], array_diff_key($decoded, [
+            'metadata' => null,
+        ]));
+
+        self::assertIsArray($decoded['metadata']);
+        /** @var array<string, mixed> $metadata */
+        $metadata = $decoded['metadata'];
+        self::assertSame(['event_id', 'timestamp', 'name'], array_keys($metadata));
+        self::assertSame('text', $metadata['name']);
+        self::assertIsInt($metadata['timestamp']);
     }
 
     public function testEncodesANullKeyAsJsonNull(): void
     {
-        $serializer = new JsonSerializer();
+        $json = $this->serializer->encode(TextMessage::create(2, null, 'event-2'));
 
-        $json = $serializer->encode(new TextMessage(sequence: 2, key: null, text: 'event-2', timestamp: 1717840000456));
+        /** @var array<string, mixed> $decoded */
+        $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
-        self::assertJsonStringEqualsJsonString(
-            '{"sequence":2,"key":null,"text":"event-2","timestamp":1717840000456}',
-            $json,
-        );
+        self::assertNull($decoded['key']);
     }
 
     public function testDecodesBackToAnAssociativeArray(): void
     {
-        $serializer = new JsonSerializer();
-
-        $decoded = $serializer->decode('{"sequence":1,"key":"a","text":"event-1","timestamp":1717840000123}');
-
-        self::assertSame(
-            [
-                'sequence' => 1,
-                'key' => 'a',
-                'text' => 'event-1',
-                'timestamp' => 1717840000123,
-            ],
-            $decoded,
+        $decoded = $this->serializer->decode(
+            '{"metadata":{"event_id":"x","timestamp":1717840000123,"name":"text"},"sequence":1,"key":"a","text":"event-1"}',
         );
+
+        self::assertSame([
+            'metadata' => [
+                'event_id' => 'x',
+                'timestamp' => 1717840000123,
+                'name' => 'text',
+            ],
+            'sequence' => 1,
+            'key' => 'a',
+            'text' => 'event-1',
+        ], $decoded);
     }
 
     public function testRoundTripsAMessageThroughTheWire(): void
     {
-        $serializer = new JsonSerializer();
-        $message = new TextMessage(sequence: 7, key: 'order-7', text: 'order-placed', timestamp: 1717840000789);
+        $decoded = $this->serializer->decode($this->serializer->encode(TextMessage::create(7, 'order-7', 'order-placed')));
 
-        $decoded = $serializer->decode($serializer->encode($message));
-
-        self::assertSame(
-            [
-                'sequence' => 7,
-                'key' => 'order-7',
-                'text' => 'order-placed',
-                'timestamp' => 1717840000789,
-            ],
-            $decoded,
-        );
+        self::assertIsArray($decoded);
+        self::assertSame([
+            'sequence' => 7,
+            'key' => 'order-7',
+            'text' => 'order-placed',
+        ], array_diff_key($decoded, [
+            'metadata' => null,
+        ]));
     }
 }

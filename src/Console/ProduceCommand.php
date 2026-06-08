@@ -6,7 +6,6 @@ namespace Workshop\Console;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -16,7 +15,7 @@ use Workshop\Produce\TextMessage;
 
 #[AsCommand(
     name: 'produce',
-    description: 'Produce N messages to a topic. Cycle through --key for keyed routing, or pin every message to a --partition.',
+    description: 'Produce N TextMessages to the routed json topic. Cycle through --key for keyed partitioning, or --unkeyed to scatter them.',
 )]
 final class ProduceCommand extends Command
 {
@@ -30,22 +29,20 @@ final class ProduceCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('topic', InputArgument::REQUIRED, 'Topic to produce to (e.g. consumer-groups-events)')
             ->addOption('count', 'c', InputOption::VALUE_REQUIRED, 'Number of messages to produce', 10)
             ->addOption('key', 'k', InputOption::VALUE_REQUIRED, 'Comma-separated semantic keys; messages cycle through them (crc32(key) routes each key to a fixed partition). Omit for unkeyed: a random partition per message')
             ->addOption('key-cardinality', null, InputOption::VALUE_REQUIRED, 'Generate this many distinct synthetic keys (key-0..key-{N-1}) and cycle through them; shows even spread from a high-cardinality key. Mutually exclusive with --key')
-            ->addOption('partition', 'p', InputOption::VALUE_REQUIRED, 'Pin every message to this partition (overrides key-based routing)')
+            ->addOption('unkeyed', null, InputOption::VALUE_NONE, 'Scatter every message across partitions, ignoring keys (overrides --key)')
             ->addOption('payload', null, InputOption::VALUE_REQUIRED, 'Payload template; {n} = 1-based index, {key} = message key', 'event-{n}')
             ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Producer profile to build the client from', 'producer.simple');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $topicName = Input::string($input, 'topic');
         $count = Input::int($input, 'count');
-        $partition = Input::intOrNull($input, 'partition');
         $template = Input::string($input, 'payload');
         $profile = Input::string($input, 'profile');
+        $forceUnkeyed = (bool) $input->getOption('unkeyed');
 
         $cardinality = Input::intOrNull($input, 'key-cardinality');
         $keys = $this->parseKeys(Input::stringOrNull($input, 'key'));
@@ -74,15 +71,10 @@ final class ProduceCommand extends Command
             ]);
             $message = TextMessage::create($i, $key, $text);
 
-            if (null !== $partition) {
-                $producer->toPartition($topicName, $partition, $message, $key);
-            } elseif (null !== $key) {
-                $producer->keyed($topicName, $key, $message);
-            } else {
-                $producer->unkeyed($topicName, $message);
-            }
+            $unkeyed = $forceUnkeyed || null === $key;
+            $produced = $producer->produce($message, $unkeyed);
 
-            $output->writeln($this->describe($partition, $key, $text));
+            $output->writeln($this->describe($produced->route->topic, $unkeyed ? null : $key, $text));
         }
 
         $producer->close();
@@ -105,15 +97,10 @@ final class ProduceCommand extends Command
         ));
     }
 
-    private function describe(?int $partition, ?string $key, string $payload): string
+    private function describe(string $topic, ?string $key, string $payload): string
     {
-        $parts = [];
-        if (null !== $partition) {
-            $parts[] = "partition={$partition}";
-        }
-        if (null !== $key) {
-            $parts[] = "key={$key}";
-        }
+        $parts = ["topic={$topic}"];
+        $parts[] = null !== $key ? "key={$key}" : 'unkeyed';
         $parts[] = "value={$payload}";
 
         return 'produced: ' . implode(' ', $parts);

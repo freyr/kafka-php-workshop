@@ -10,17 +10,23 @@ use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfile;
 use Workshop\Kafka\Config\ProfileRegistry;
 use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
 
 /**
  * Builds a MessageProducer from a named profile. One of three role factories — a
  * producer needs idempotence and a delivery-report callback, never group.id or a
- * rebalance handler, so the producer's config surface is its own class.
+ * rebalance handler, so the producer's config surface is its own class. The
+ * routing table and name resolver are handed to every producer so its produce()
+ * can route a Message to its own topic.
  */
 final readonly class ProducerFactory
 {
     public function __construct(
         private ConfBuilder $confBuilder,
         private ProfileRegistry $profiles,
+        private MessageRouting $routing,
+        private MessageNameResolver $names,
     ) {
     }
 
@@ -31,6 +37,6 @@ final readonly class ProducerFactory
         $conf = $this->confBuilder->build($profile);
         ($callbacks ?? new CallbackKit(new ErrorCallback()))->attachTo($conf);
 
-        return new MessageProducer(new \RdKafka\Producer($conf), $serializer);
+        return new MessageProducer(new \RdKafka\Producer($conf), $serializer, $this->routing, $this->names);
     }
 }

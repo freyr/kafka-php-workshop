@@ -5,25 +5,22 @@ declare(strict_types=1);
 namespace Workshop\Produce;
 
 /**
- * The Block 1-2 message: a plain, un-enveloped record carried as JSON. Unlike the
- * Block 3 Message hierarchy (which wraps a metadata envelope around a business
- * payload for AVRO), this is deliberately flat — a sequence number, the optional
- * Kafka key echoed into the value, the templated text, and a UTC epoch-millis
- * stamp. It exists to give the native Symfony Serializer a typed object to turn
- * into JSON, so Blocks 1-2 teach structured serialization before AVRO arrives.
+ * The Block 1-2 message: a sequence number, the optional Kafka key echoed into the
+ * value, and the templated text. Like every Block 3 event it is a Message, so it
+ * flows through the same producer/serializer contract — the envelope (event_id,
+ * timestamp, name) is supplied by the base, and JsonSerializer turns the enveloped
+ * record into JSON. The per-message timestamp now lives in that envelope metadata
+ * rather than as a standalone field.
  */
-final readonly class TextMessage
+#[MessageName('text')]
+final class TextMessage extends Message
 {
-    public function __construct(
-        public int $sequence,
-        public ?string $key,
-        public string $text,
-        public int $timestamp,
-    ) {
-    }
-
     public static function create(int $sequence, ?string $key, string $text): self
     {
-        return new self($sequence, $key, $text, (int) floor(microtime(true) * 1000));
+        return new self($key ?? '', [
+            'sequence' => $sequence,
+            'key' => $key,
+            'text' => $text,
+        ]);
     }
 }

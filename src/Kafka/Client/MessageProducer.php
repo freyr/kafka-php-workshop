@@ -7,21 +7,26 @@ namespace Workshop\Kafka\Client;
 use RdKafka\Producer;
 use RdKafka\ProducerTopic;
 use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Produce\Message;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
+use Workshop\Produce\Produced;
+use Workshop\Produce\Route;
 
 /**
- * A thin, intent-revealing wrapper over \RdKafka\Producer. The three send methods
- * name the modeling decision instead of leaving it to raw producev flags:
+ * A typed wrapper over \RdKafka\Producer. The single public send, produce(), takes
+ * a Message and routes it to its own topic — resolved from the message's
+ * #[MessageName] via the routing table — so callers never name a topic. By default
+ * it keys on the message's partition key (crc32(key) % n → same key, same
+ * partition, so an aggregate's events stay ordered); pass $unkeyed to let
+ * librdkafka scatter records (consistent_random) for throughput with no ordering
+ * guarantee.
  *
- *  - keyed()       same key → same partition (crc32(key) % n), so an aggregate's
- *                  events stay ordered. The key is the unit of ordering.
- *  - unkeyed()     no key → librdkafka scatters records (consistent_random) for
- *                  throughput; no ordering guarantee.
- *  - toPartition() pin a specific partition, overriding key-based routing.
- *
- * The payload is encoded through the injected MessageSerializer, so the same
- * producer speaks JSON (Block 1-2) or AVRO envelopes (Block 3) unchanged.
- * Call close() to flush — librdkafka sends asynchronously, so undelivered messages
- * are lost if the process exits without flushing.
+ * Every send runs the Message through the injected MessageSerializer, so the same
+ * producer speaks JSON (Block 1-2) or AVRO envelopes (Block 3) — the serializer,
+ * not the producer, knows the wire shape. Call close() to flush — librdkafka sends
+ * asynchronously, so undelivered messages are lost if the process exits without
+ * flushing.
  */
 final class MessageProducer
 {
@@ -33,23 +38,39 @@ final class MessageProducer
     public function __construct(
         private readonly Producer $producer,
         private readonly MessageSerializer $serializer,
+        private readonly MessageRouting $routing,
+        private readonly MessageNameResolver $names,
         private readonly int $flushTimeoutMs = 10000,
     ) {
     }
 
-    public function keyed(string $topic, string $aggregateId, mixed $payload): void
+    /**
+     * Produce one message to its routed topic. By default it is keyed by its
+     * partition key for per-aggregate ordering; pass $unkeyed to scatter it across
+     * partitions instead. The route is resolved up front, so an unrouted message
+     * fails before any broker or registry contact.
+     */
+    public function produce(Message $message, bool $unkeyed = false): Produced
     {
-        $this->send($topic, RD_KAFKA_PARTITION_UA, $payload, $aggregateId);
+        $route = $this->extractRouteFor($message);
+
+        if ($unkeyed) {
+            $this->unkeyed($route->topic, $message);
+        } else {
+            $this->keyed($route->topic, $message->partitionKey(), $message);
+        }
+
+        return new Produced($this->names->nameOf($message), $route);
     }
 
-    public function unkeyed(string $topic, mixed $payload): void
+    private function keyed(string $topic, string $aggregateId, Message $message): void
     {
-        $this->send($topic, RD_KAFKA_PARTITION_UA, $payload, null);
+        $this->send($topic, RD_KAFKA_PARTITION_UA, $message, $aggregateId);
     }
 
-    public function toPartition(string $topic, int $partition, mixed $payload, ?string $key = null): void
+    private function unkeyed(string $topic, Message $message): void
     {
-        $this->send($topic, $partition, $payload, $key);
+        $this->send($topic, RD_KAFKA_PARTITION_UA, $message, null);
     }
 
     /**
@@ -65,9 +86,9 @@ final class MessageProducer
         }
     }
 
-    private function send(string $topic, int $partition, mixed $payload, ?string $key): void
+    private function send(string $topic, int $partition, Message $message, ?string $key): void
     {
-        $this->topicFor($topic)->producev($partition, 0, $this->serializer->encode($payload), $key);
+        $this->topicFor($topic)->producev($partition, 0, $this->serializer->encode($message), $key);
         // Serve delivery-report and error callbacks without blocking.
         $this->producer->poll(0);
     }
@@ -75,5 +96,10 @@ final class MessageProducer
     private function topicFor(string $name): ProducerTopic
     {
         return $this->topics[$name] ??= $this->producer->newTopic($name);
+    }
+
+    private function extractRouteFor(Message $message): Route
+    {
+        return $this->routing->for($this->names->nameOf($message));
     }
 }

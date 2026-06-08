@@ -1,27 +1,37 @@
-# Produce-side routing: message name => wire identity (topic + subject + schema).
-# Subjects use RecordNameStrategy (the schema's fully-qualified record name,
-# lower_snake component) and carry NO version marker — a breaking change mints a
-# brand-new subject, never a vN suffix. order-* events share one topic; each
-# registers its own subject. Schema paths resolve against %kafka.schema_dir%.
+# Produce-side routing: message name => wire identity (type + topic [+ subject +
+# schema]). `type` selects the serializer: avro routes register a subject and a
+# schema; a json route (Block 1-2) carries only a topic. Subjects use
+# RecordNameStrategy (the schema's fully-qualified record name, lower_snake
+# component) and carry NO version marker — a breaking change mints a brand-new
+# subject, never a vN suffix. order-* events share one topic; each registers its
+# own subject. Schema paths resolve against %kafka.schema_dir%.
 workshop:
     producers:
+        text:
+            type: json
+            topic: consumer-groups-events
         order-created:
+            type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_created
             schema: '%kafka.schema_dir%/orders/OrderCreated.avsc'
         order-updated:
+            type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_updated
             schema: '%kafka.schema_dir%/orders/OrderUpdated.avsc'
         order-cancelled:
+            type: avro
             topic: enet.ecommerce.orders
             subject: com.ecommerce.orders.order_cancelled
             schema: '%kafka.schema_dir%/orders/OrderCancelled.avsc'
         payment-processed:
+            type: avro
             topic: enet.ecommerce.payments
             subject: com.ecommerce.payments.payment_processed
             schema: '%kafka.schema_dir%/payments/PaymentProcessed.avsc'
         inventory-reserved:
+            type: avro
             topic: enet.ecommerce.inventory
             subject: com.ecommerce.inventory.inventory_reserved
             schema: '%kafka.schema_dir%/inventory/InventoryReserved.avsc'

@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace Workshop\Produce;
 
 /**
- * The wire identity of one message name: which topic it is produced to, the
- * Schema Registry subject it registers under (RecordNameStrategy), and the path
- * to its AVRO schema.
+ * The wire identity of one message name: its serialization type (avro | json),
+ * which topic it is produced to, and — for AVRO — the Schema Registry subject it
+ * registers under (RecordNameStrategy) and the path to its schema. A json route
+ * carries only a topic; its subject/schema are empty and never read.
  */
 final readonly class Route
 {
@@ -15,6 +16,7 @@ final readonly class Route
         public string $topic,
         public string $subject,
         public string $schemaPath,
+        public string $type = 'avro',
     ) {
     }
 

@@ -33,12 +33,13 @@ final class EventProduceCommandTest extends TestCase
         $factory = new ProducerFactory(
             new ConfBuilder('broker.test:29092', $noop),
             new ProfileRegistry(new KafkaTuning()),
+            new MessageRouting([]),
+            new MessageNameResolver(),
         );
-        $routing = new MessageRouting([]);
         // Never reached on the unknown-type branch, so skip building the registry stack.
         $avro = (new \ReflectionClass(AvroSerializer::class))->newInstanceWithoutConstructor();
 
-        $tester = new CommandTester(new EventProduceCommand($factory, $routing, $avro, new MessageNameResolver()));
+        $tester = new CommandTester(new EventProduceCommand($factory, $avro));
         $tester->execute([
             'type' => 'no-such-type',
         ]);

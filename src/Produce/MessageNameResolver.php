@@ -18,9 +18,6 @@ final class MessageNameResolver
      */
     private array $cache = [];
 
-    /**
-     * @throws \ReflectionException
-     */
     public function nameOf(Message $message): string
     {
         return $this->cache[$message::class] ??= self::reflect($message::class);
@@ -28,8 +25,6 @@ final class MessageNameResolver
 
     /**
      * @param class-string $class
-     *
-     * @throws \ReflectionException
      */
     private static function reflect(string $class): string
     {

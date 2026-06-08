@@ -6,20 +6,23 @@ namespace Workshop\Kafka\Serde;
 
 use FlixTech\AvroSerializer\Objects\RecordSerializer;
 use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
+use Workshop\Produce\Message;
+use Workshop\Produce\MessageNameResolver;
+use Workshop\Produce\MessageRouting;
 
 /**
  * Block 3 serializer: the MessageSerializer seam over the Confluent AVRO wire
  * format (a 0x00 magic byte + 4-byte big-endian schema id + AVRO binary).
  *
  * The Schema Registry plumbing — Guzzle client → registry → RecordSerializer — is
- * assembled as data in config/services.yaml and injected ready-made, so this class
- * is pure framing logic. encode() takes an AvroPayload (subject + schema +
- * enveloped record) and returns wire-format bytes. Schemas are NOT auto-registered:
- * the registry stays a strict gate, so a subject must be registered out of band
- * (bin/console schema:register) before its messages can be produced — encode throws
- * a SchemaRegistryException otherwise. decode() returns the structured envelope, or
- * null when the bytes are not Confluent-framed so a dispatcher can skip non-AVRO
- * records instead of crashing.
+ * assembled as data in config/services.yaml and injected ready-made. encode()
+ * takes a Message and does the AVRO framing itself: it resolves the message's wire
+ * name, looks up the route (subject + schema), and encodes the enveloped record.
+ * Schemas are NOT auto-registered: the registry stays a strict gate, so a subject
+ * must be registered out of band (bin/console schema:register) before its messages
+ * can be produced — encode throws a SchemaRegistryException otherwise. decode()
+ * returns the structured envelope, or null when the bytes are not Confluent-framed
+ * so a dispatcher can skip non-AVRO records instead of crashing.
  */
 final readonly class AvroSerializer implements MessageSerializer
 {
@@ -32,6 +35,8 @@ final readonly class AvroSerializer implements MessageSerializer
 
     public function __construct(
         private RecordSerializer $serializer,
+        private MessageNameResolver $names,
+        private MessageRouting $routing,
     ) {
     }
 
@@ -39,13 +44,14 @@ final readonly class AvroSerializer implements MessageSerializer
      * @throws \AvroSchemaParseException
      * @throws SchemaRegistryException
      */
-    public function encode(mixed $payload): string
+    public function encode(Message $payload): string
     {
-        if (! $payload instanceof AvroPayload) {
-            throw new \InvalidArgumentException(sprintf('%s expects an %s payload, got %s.', self::class, AvroPayload::class, get_debug_type($payload)));
-        }
+        // Resolve the route before touching the RecordSerializer, so an unrouted
+        // message fails fast (and without any registry contact).
+        $name = $this->names->nameOf($payload);
+        $route = $this->routing->for($name);
 
-        return $this->serializer->encodeRecord($payload->subject, \AvroSchema::parse($payload->schemaJson), $payload->record);
+        return $this->serializer->encodeRecord($route->subject, \AvroSchema::parse($route->schemaJson()), $payload->envelope($name));
     }
 
     /**
