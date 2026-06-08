@@ -72,10 +72,18 @@ services:
                 !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SCHEMAS: true
                 !php/const FlixTech\AvroSerializer\Objects\RecordSerializer::OPTION_REGISTER_MISSING_SUBJECTS: true
 
-    # The Schema Registry URL can't be type-hint-autowired — bind it by name.
+    # The Block 4 REST client gets its own Guzzle instance: a trailing-slash
+    # base_uri so relative request paths resolve, and http_errors=false so it can
+    # inspect a 404 (subject not registered yet) instead of catching an exception
+    # for the expected "first version" case.
+    schema_registry.http_client:
+        class: GuzzleHttp\Client
+        arguments:
+            - { base_uri: '%schema_registry.url%/', http_errors: false }
+
     Workshop\Kafka\Serde\SchemaRegistryClient:
         arguments:
-            $schemaRegistryUrl: '%schema_registry.url%'
+            $http: '@schema_registry.http_client'
 
     # ConfigStatsCommand (Block 8 raw-rdkafka deep dive) needs the broker list.
     Workshop\Console\ConfigStatsCommand:

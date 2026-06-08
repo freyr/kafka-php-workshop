@@ -20,16 +20,9 @@ use function FlixTech\SchemaRegistryApi\Requests\checkSchemaCompatibilityAgainst
  */
 final readonly class SchemaRegistryClient
 {
-    private Client $http;
-
-    public function __construct(string $schemaRegistryUrl)
-    {
-        // http_errors=false so we can inspect 404 (subject not registered yet)
-        // instead of catching exceptions for the expected "first version" case.
-        $this->http = new Client([
-            'base_uri' => rtrim($schemaRegistryUrl, '/') . '/',
-            'http_errors' => false,
-        ]);
+    public function __construct(
+        private Client $http,
+    ) {
     }
 
     /**
