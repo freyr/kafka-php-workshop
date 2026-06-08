@@ -23,8 +23,8 @@ counterpart to that material.
 ├── .env                     # Workshop defaults (loaded by bin/console)
 ├── bin/
 │   ├── console              # Symfony Console entry — all PHP commands
-│   ├── topic-create / topic-delete / topic-describe
-│   ├── topic-map / topic-map-delete   # create/tear down the eCommerce topic map (Block 2)
+│   ├── kafka-setup / kafka-teardown   # create/delete every workshop topic (all blocks); list in bin/lib/topics.sh
+│   ├── topic-create / topic-delete / topic-describe   # ad-hoc single-topic admin
 │   ├── group-describe / group-reset / group-delete
 │   ├── partition-offsets
 │   └── debezium-register / debezium-status / debezium-delete   # Debezium outbox connector (Block 6)
@@ -183,7 +183,7 @@ and the `mysql` service runs row-based binlog.
 
 For Block 7, a retry/DLT demo shows error classification, a bounded
 in-process-retry → retry-topic chain → Dead Letter Topic, and DLT recovery
-(the retry tiers and shared DLT are created by `bin/topic-map`):
+(the retry tiers and shared DLT are created by `bin/kafka-setup`):
 
 ```sh
 bin/console retry:consume [topic] [--poison=id,…] [--flaky=id,…] [--naive] \
@@ -232,11 +232,16 @@ LeaveGroup). Note: php-rdkafka's high-level `KafkaConsumer` has no
 Admin operations against the broker are short bash scripts in `bin/`:
 
 ```sh
-bin/topic-create consumer-groups-events --partitions 1
-bin/topic-map                                       # create the full eCommerce topic map
+bin/kafka-setup                                     # create every workshop topic (all blocks) in one shot
+bin/topic-create scratch-events --partitions 1      # one-off topic outside the predefined inventory
 bin/group-reset offsets-group earliest offsets-events
 bin/partition-offsets partitioning-events
 ```
+
+The predefined topic inventory lives in `bin/lib/topics.sh` — a single
+`"<topic>:<partitions>"` list that both `bin/kafka-setup` (create) and
+`bin/kafka-teardown` (delete) source, so the two can never drift. Add a topic by
+editing that one list. `make setup` / `make teardown` wrap the two scripts.
 
 ## Conventions
 

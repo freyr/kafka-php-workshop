@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Tears down every topic bin/kafka-setup creates. Idempotent (--if-exists), so
+# re-running is safe. Shares the predefined inventory in bin/lib/topics.sh with
+# bin/kafka-setup, so the create and delete lists can never drift.
+#
+#   bin/kafka-teardown     # delete all workshop topics
+#
+# This removes data: deleted topics lose every message. To wipe the whole broker
+# instead (topics + offsets + volume), use `make destroy`.
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/bin/lib/topics.sh"
+
+for entry in "${WORKSHOP_TOPICS[@]}"; do
+  topic="${entry%%:*}"
+  echo "deleting ${topic}…"
+  docker compose exec -T kafka kafka-topics \
+    --bootstrap-server kafka:29092 \
+    --delete --topic "$topic" --if-exists
+done

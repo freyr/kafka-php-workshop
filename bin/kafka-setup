@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Unified Kafka topic setup for the whole workshop — provisions every topic any
+# block needs in one shot. Idempotent (--if-not-exists): re-running is safe and
+# leaves the partition count of existing topics untouched. The topic list is the
+# predefined inventory in bin/lib/topics.sh (shared with bin/kafka-teardown).
+#
+#   bin/kafka-setup        # create all workshop topics
+#
+# Tear the same set down with bin/kafka-teardown.
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/bin/lib/topics.sh"
+
+for entry in "${WORKSHOP_TOPICS[@]}"; do
+  topic="${entry%%:*}"
+  partitions="${entry##*:}"
+  echo "creating ${topic} (${partitions} partitions)…"
+  docker compose exec -T kafka kafka-topics \
+    --bootstrap-server kafka:29092 \
+    --create --if-not-exists \
+    --topic "$topic" \
+    --partitions "$partitions" --replication-factor 1
+done
+
+echo
+echo "workshop topics on the broker:"
+docker compose exec -T kafka kafka-topics \
+  --bootstrap-server kafka:29092 --list \
+  | grep -E '^(enet\.|consumer-groups-events|offsets-events|partitioning-events|schema-history\.outbox)' \
+  | sort

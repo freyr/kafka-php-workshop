@@ -13,6 +13,12 @@ destroy: ## stop containers and drop the kafka-data volume (wipes topics)
 	docker compose down -v
 recreate: destroy create ## destroy + create
 
+##@ Topic provisioning
+setup: ## create every workshop topic across all blocks (idempotent)
+	bin/kafka-setup
+teardown: ## delete every workshop topic created by setup (idempotent)
+	bin/kafka-teardown
+
 ##@ PHP container
 bash: ## interactive bash shell in an ephemeral php container
 	docker compose run --rm php bash
