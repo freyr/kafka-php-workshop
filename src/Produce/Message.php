@@ -15,7 +15,7 @@ use Symfony\Component\Uid\Uuid;
  * per class from the concrete class's #[MessageName] attribute by
  * MessageNameResolver at the serialization stage and passed into envelope().
  */
-abstract class Message implements SerializableMessage
+abstract class Message
 {
     private readonly string $eventId;
     private readonly int $timestamp;
@@ -30,7 +30,7 @@ abstract class Message implements SerializableMessage
      */
     protected function __construct(
         private readonly string $partitionKey,
-        private readonly array $payload,
+        public readonly array $payload,
     ) {
         if (array_key_exists('metadata', $payload)) {
             throw new \LogicException(sprintf('%s payload must not contain a "metadata" key — it is reserved by the envelope.', static::class));
@@ -43,14 +43,6 @@ abstract class Message implements SerializableMessage
     public function partitionKey(): string
     {
         return $this->partitionKey;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toPayload(): array
-    {
-        return $this->payload;
     }
 
     /**

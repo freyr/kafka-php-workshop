@@ -7,7 +7,6 @@ namespace Workshop\Tests\Produce;
 use PHPUnit\Framework\TestCase;
 use Workshop\Produce\Message;
 use Workshop\Produce\MessageName;
-use Workshop\Produce\SerializableMessage;
 
 final class MessageTest extends TestCase
 {
@@ -40,7 +39,6 @@ final class MessageTest extends TestCase
         self::assertIsString($metadata['event_id']);
         self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $metadata['event_id']);
         self::assertSame('ord-1', $message->partitionKey());
-        self::assertInstanceOf(SerializableMessage::class, $message);
     }
 
     public function testRejectsAReservedMetadataKeyInPayload(): void
