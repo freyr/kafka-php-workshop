@@ -7,6 +7,7 @@ namespace Workshop\Kafka\Callback;
 use RdKafka\Conf;
 use RdKafka\KafkaConsumer;
 use RdKafka\TopicPartition;
+use Workshop\Kafka\Runtime\Narrating;
 use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RebalanceProtocol;
 

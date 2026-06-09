@@ -6,6 +6,7 @@ namespace Workshop\Kafka\Callback;
 
 use RdKafka\Conf;
 use RdKafka\Message;
+use Workshop\Kafka\Runtime\Narrating;
 
 /**
  * The producer side of the callback set: librdkafka invokes the delivery-report

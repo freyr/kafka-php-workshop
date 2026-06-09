@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workshop\Kafka\Callback;
 
 use RdKafka\Conf;
+use Workshop\Kafka\Runtime\Narrating;
 
 /**
  * Surfaces librdkafka's asynchronous error events (broker down, auth failure,

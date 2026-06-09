@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Kafka\Callback;
+namespace Workshop\Kafka\Runtime;
 
 /**
  * Shared optional-narration helper. A callback narrates human-readable lines only
