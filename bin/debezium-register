@@ -40,6 +40,9 @@ echo
 
 echo
 echo "registered. Check status with:  bin/debezium-status"
-echo "then place an order and watch CDC:"
+echo "then place an order and watch CDC route it (the topic carries JSON, not AVRO):"
 echo "  docker compose run --rm php bin/console outbox:place"
-echo "  docker compose run --rm php bin/console consume enet.ecommerce.outbox.Order"
+echo "  make outbox-watch"
+echo
+echo "note: outbox:relay is the other relay flavor for the same table — run one"
+echo "flavor at a time, or both publish the same rows."

@@ -31,6 +31,7 @@ services:
             - '../src/Kafka/Runtime/RunLimits.php'
             - '../src/Kafka/Client/MessageProducer.php'
             - '../src/Kafka/Client/MessageConsumer.php'
+            - '../src/Kafka/Client/RawProducer.php'
 
     Workshop\App\Console\:
         resource: '../src/App/Console/'
@@ -77,6 +78,17 @@ services:
         factory: ['@Workshop\Framework\Db\ConnectionFactory', 'create']
 
     Workshop\Framework\Db\SchemaInstaller: ~
+
+    # Block 6 — the transactional outbox. OutboxPlacer wraps the order mutation
+    # (OrderStateWriter) and the outbox append (OutboxRepository) in ONE DB
+    # transaction; the same repository is the gateway outbox:relay polls and marks.
+    # OutboxRecord and SimulatedCrash are value objects, never services, and the
+    # relay's RawProducer is excluded from autodiscovery above — it is built by
+    # ProducerFactory::createRaw, around a live \RdKafka\Producer.
+    Workshop\Framework\Db\OutboxSchemaInstaller: ~
+    Workshop\App\Outbox\OutboxRepository: ~
+    Workshop\App\Outbox\OrderStateWriter: ~
+    Workshop\App\Outbox\OutboxPlacer: ~
 
     # Resolves a message's wire name from its #[MessageName] attribute, caching the
     # class => name mapping so reflection runs once per type (produce-side only;

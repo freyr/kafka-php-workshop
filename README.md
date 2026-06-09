@@ -143,6 +143,35 @@ the registry does and does not protect. Schemas are **not** shipped pre-evolved:
 See the full step-by-step facilitator runbook in the Consulting vault
 (`Block-04-Demo-Runbook.md`).
 
+**Transactional outbox** (Block 6) — one generic `outbox` table, two relay flavors.
+The business write and its event are committed in **one MySQL transaction**; a relay
+publishes the event to Kafka afterwards, so the broker is never on the business
+write's critical path:
+
+```sh
+bin/console outbox:setup [--fresh]                        # provision the outbox (and ensure orders)
+bin/console outbox:place [-c N] [--message-name NAME] [--pool N] [--fail]
+bin/console outbox:relay [--batch N] [--interval MS] [--once] [--profile NAME]
+```
+
+`outbox:place` simulates the producing service: per write it mutates the `orders`
+row **and** appends the event (`order.created/updated/cancelled`, the same JSON
+envelope the AVRO path uses) to `outbox` — atomically, no Kafka client involved.
+`--fail` crashes each transaction right before COMMIT: afterwards neither table has
+a trace, the beat that produce-then-commit cannot replicate. The relay is either:
+
+- **PHP polling relay** — `outbox:relay` is a long-running process draining pending
+  rows in insertion order to `enet.ecommerce.outbox.<aggregate_type>` (key =
+  `aggregate_id`, headers = `message-name`/`event-id`), and stamping `published_at`
+  only after the broker acked the whole batch — at-least-once, mark-after-ack.
+- **Debezium CDC** — `bin/debezium-register` registers a MySQL binlog connector whose
+  EventRouter SMT routes the same rows to the same topics, no PHP process at all
+  (`config/debezium-outbox-connector.json`).
+
+Run one flavor at a time (they'd double-publish the same rows); watch the result
+with `make outbox-watch`. Full facilitator runbook: `Block-06-Demo-Runbook.md` in
+the Consulting vault.
+
 **Topic & group operations** — shell scripts in `bin/` (php-rdkafka has no admin API):
 `kafka-setup` / `kafka-teardown` (provision/drop the full topic inventory),
 `topic-create`, `topic-delete`, `topic-describe`, `group-describe`, `group-reset`,
@@ -183,7 +212,8 @@ See the full step-by-step facilitator runbook in the Consulting vault
 │   ├── App/                 # the application: producer + consumer + CLI
 │   │   ├── Console/         # one class per command (#[AsCommand])
 │   │   ├── Producer/        # Message base + events, MessageName, routing
-│   │   └── Consumer/        # read-model DTOs + denormalizer
+│   │   ├── Consumer/        # read-model DTOs + denormalizer
+│   │   └── Outbox/          # Block 6: transactional placer + relay's table gateway
 │   ├── Kafka/               # the "plugin": Client, Serde, Config, Callback, Runtime
 │   └── Framework/           # Kernel, DI extension, Db (DBAL connection + schema)
 ├── schemas/                 # AVRO: orders/ audit/ demo/ (Block 4 evolution)
