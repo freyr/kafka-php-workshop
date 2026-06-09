@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Db;
+namespace Workshop\Framework\Db;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;

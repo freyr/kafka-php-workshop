@@ -53,14 +53,14 @@ services:
     # The consumer's MySQL store. ConnectionFactory turns the DATABASE_URL parameter
     # into a DBAL Connection (the single construction seam); SchemaInstaller (autowired
     # with that Connection) provisions the tables for kafka:consume:setup.
-    Workshop\Db\ConnectionFactory:
+    Workshop\Framework\Db\ConnectionFactory:
         arguments:
             $url: '%database.url%'
 
     Doctrine\DBAL\Connection:
-        factory: ['@Workshop\Db\ConnectionFactory', 'create']
+        factory: ['@Workshop\Framework\Db\ConnectionFactory', 'create']
 
-    Workshop\Db\SchemaInstaller: ~
+    Workshop\Framework\Db\SchemaInstaller: ~
 
     # Resolves a message's wire name from its #[MessageName] attribute, caching the
     # class => name mapping so reflection runs once per type (produce-side only;
