@@ -31,11 +31,6 @@ use Workshop\Kafka\Runtime\RunLimits;
 )]
 final class ConsumeCommand extends Command
 {
-    /**
-     * Poll interval (ms) when no --timeout is given; bounds how fast a tailing run reacts to Ctrl-C.
-     */
-    private const int TAIL_POLL_MS = 1000;
-
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly MessageInterpreter $interpreter,
@@ -57,7 +52,8 @@ final class ConsumeCommand extends Command
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
             ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --profile=default); default 5000', '5000')
             ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
-            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run. Omit to tail continuously — stop only on --max or Ctrl-C');
+            ->addOption('ttl', null, InputOption::VALUE_REQUIRED, 'Max lifetime in ms: stop after the consumer has lived this long, regardless of traffic (the time analogue of --max). Omit to run unbounded')
+            ->addOption('drain', null, InputOption::VALUE_NONE, 'Stop at the first empty poll — read the backlog until drained, then exit (batch mode). Without it the consumer tails continuously, stopping only on --max, --ttl, or Ctrl-C');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -73,11 +69,12 @@ final class ConsumeCommand extends Command
 
         $topic = Input::string($input, 'topic');
         $max = Input::int($input, 'max');
-        $timeoutMs = Input::intOrNull($input, 'timeout');
+        $ttlMs = Input::intOrNull($input, 'ttl');
         $pauseMs = Input::int($input, 'interval');
         $autoCommitMs = Input::int($input, 'auto-commit-interval');
         $groupOption = Input::stringOrNull($input, 'group');
         $idempotent = (bool) $input->getOption('idempotent');
+        $drain = (bool) $input->getOption('drain');
 
         // Ephemeral is the throwaway inspector: it always reads the whole log from
         // the beginning and joins a unique, single-use group, so a committed offset
@@ -89,11 +86,10 @@ final class ConsumeCommand extends Command
             ? sprintf('ephemeral-%s-%d-%d', $topic, getmypid(), time())
             : ($groupOption ?? sprintf('consume-%s', $topic));
 
-        // No --timeout → tail the topic continuously: keep polling forever and stop
-        // only on --max or a signal. An explicit --timeout restores the read-until-idle
-        // behavior, ending at the first empty poll within that window.
-        $stopOnIdle = null !== $timeoutMs;
-        $pollTimeoutMs = $timeoutMs ?? self::TAIL_POLL_MS;
+        // Three independent stop conditions, all opt-in: --max (a count cap), --ttl (a
+        // lifetime, below), and --drain (stop at the first empty poll). With none set
+        // the consumer tails forever, ending only on a signal. The poll cadence is
+        // fixed in MessageConsumer and is deliberately not configurable here.
 
         // The lane names the KafkaProfile (the librdkafka config). The only runtime
         // override is the default lane's auto-commit interval — every other config
@@ -105,13 +101,14 @@ final class ConsumeCommand extends Command
             : [];
 
         $output->writeln(sprintf(
-            '<comment>topic=%s group=%s profile=%s from=%s idempotent=%s timeout=%s</comment>',
+            '<comment>topic=%s group=%s profile=%s from=%s idempotent=%s ttl=%s mode=%s</comment>',
             $topic,
             $group,
             $lane->profileName(),
             $offsetReset->value,
             $idempotent ? 'yes' : 'no',
-            $stopOnIdle ? $timeoutMs . 'ms (stop on idle)' : '∞ (tail)',
+            null !== $ttlMs ? $ttlMs . 'ms' : '∞',
+            $drain ? 'drain (stop on idle)' : 'tail',
         ));
 
         $narrate = $output->isVerbose()
@@ -136,7 +133,7 @@ final class ConsumeCommand extends Command
         $consumer->run(
             [$topic],
             $messageHandler,
-            new RunLimits(maxMessages: $max, pollTimeoutMs: $pollTimeoutMs, stopOnIdle: $stopOnIdle),
+            new RunLimits(maxMessages: $max, maxRuntimeMs: $ttlMs ?? 0, stopOnIdle: $drain),
             $lane->commitPolicy($idempotent),
             $narrate,
             $pauseMs,

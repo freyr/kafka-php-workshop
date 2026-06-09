@@ -29,14 +29,14 @@ final class RunLimitsTest extends TestCase
 
     public function testRuntimeUnlimitedWhenZero(): void
     {
-        $limits = new RunLimits(maxRuntimeSeconds: 0);
+        $limits = new RunLimits(maxRuntimeMs: 0);
 
         self::assertFalse($limits->deadlinePassed(1000, 999_999));
     }
 
     public function testDeadlinePassedAtTheBoundary(): void
     {
-        $limits = new RunLimits(maxRuntimeSeconds: 10);
+        $limits = new RunLimits(maxRuntimeMs: 10);
 
         self::assertFalse($limits->deadlinePassed(1000, 1009));
         self::assertTrue($limits->deadlinePassed(1000, 1010));
@@ -48,7 +48,6 @@ final class RunLimitsTest extends TestCase
         $limits = new RunLimits();
 
         self::assertTrue($limits->stopOnIdle);
-        self::assertSame(5000, $limits->pollTimeoutMs);
     }
 
     public function testCommitPolicyHasTheThreeExpectedCases(): void

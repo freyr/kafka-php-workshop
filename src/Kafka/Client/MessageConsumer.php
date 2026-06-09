@@ -27,6 +27,13 @@ use Workshop\Kafka\Runtime\RunLimits;
  */
 final readonly class MessageConsumer
 {
+    /**
+     * How long a single consume() blocks waiting for a record. A fixed cadence, not
+     * a stop condition: short enough that the loop reacts to Ctrl-C and re-checks its
+     * stop conditions promptly, long enough that an empty poll does not busy-spin.
+     */
+    private const int POLL_TIMEOUT_MS = 1000;
+
     public function __construct(
         private KafkaConsumer $consumer,
     ) {
@@ -60,7 +67,9 @@ final readonly class MessageConsumer
         pcntl_signal(SIGINT, $stop);
 
         $processed = 0;
-        $startedAt = time();
+        // Monotonic millisecond clock for the TTL deadline — immune to wall-clock
+        // adjustments, and ms-granular so a sub-second --ttl is honored.
+        $startedAtMs = $this->nowMs();
         // The last message whose handler returned successfully — committed
         // synchronously on close under AsyncAfterEachMessage so the final offset is
         // durable. Stays null until the first message is handled.
@@ -68,12 +77,12 @@ final readonly class MessageConsumer
 
         try {
             while ($running) {
-                if ($limits->reachedMax($processed) || $limits->deadlinePassed($startedAt, time())) {
+                if ($limits->reachedMax($processed) || $limits->deadlinePassed($startedAtMs, $this->nowMs())) {
                     break;
                 }
 
                 // consume() also drives the rebalance/error callbacks on the conf.
-                $message = $this->consumer->consume($limits->pollTimeoutMs);
+                $message = $this->consumer->consume(self::POLL_TIMEOUT_MS);
                 if (! $running) {
                     break;
                 }
@@ -148,5 +157,10 @@ final readonly class MessageConsumer
         if (null !== $narrate) {
             $narrate($line);
         }
+    }
+
+    private function nowMs(): int
+    {
+        return intdiv(hrtime(true), 1_000_000);
     }
 }
