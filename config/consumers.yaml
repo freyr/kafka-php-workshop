@@ -7,3 +7,4 @@ workshop:
         order.updated: Workshop\App\Consumer\OrderUpdatedDto
         order.cancelled: Workshop\App\Consumer\OrderCancelledDto
         order.audited: Workshop\App\Consumer\OrderAuditedDto
+        demo.order.evolved: Workshop\App\Consumer\OrderEvolvedDto

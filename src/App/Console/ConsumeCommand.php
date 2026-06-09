@@ -12,11 +12,14 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\App\Consumer\ConsumedMessage;
 use Workshop\App\Consumer\ConsumerBus;
+use Workshop\App\Consumer\FieldPrintHandler;
 use Workshop\App\Consumer\IdempotencyMiddleware;
+use Workshop\App\Consumer\LatestSchemaResolver;
 use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\OrderAuditedDto;
 use Workshop\App\Consumer\OrderCancelledDto;
 use Workshop\App\Consumer\OrderCreatedDto;
+use Workshop\App\Consumer\OrderEvolvedDto;
 use Workshop\App\Consumer\OrderUpdatedDto;
 use Workshop\App\Consumer\ProjectionHandler;
 use Workshop\App\Consumer\TransactionMiddleware;
@@ -37,6 +40,7 @@ final class ConsumeCommand extends Command
         private readonly ProjectionHandler $handler,
         private readonly TransactionMiddleware $transaction,
         private readonly IdempotencyMiddleware $idempotency,
+        private readonly LatestSchemaResolver $readers,
     ) {
         parent::__construct();
     }
@@ -49,6 +53,8 @@ final class ConsumeCommand extends Command
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Consumer group id (default/modern only; ephemeral always uses a fresh throwaway group). Omit to default to consume-<topic>')
             ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end. Default committed (resume); ephemeral always reads from beginning', OffsetReset::Committed->value)
             ->addOption('idempotent', null, InputOption::VALUE_NONE, 'Wrap the handler in a DB transaction that dedups on event_id — effectively-once. Orthogonal to the profile; ignored by ephemeral (which never handles)')
+            ->addOption('reader', null, InputOption::VALUE_REQUIRED, 'Schema to decode with: writer (each record in its own writer shape — old records keep their old fields) | latest (resolve every record against its subject\'s latest registered schema, filling fields added since from their defaults). default/modern only', 'writer')
+            ->addOption('print', null, InputOption::VALUE_NONE, 'Print each record\'s DTO fields instead of projecting to the database — the Block 4 schema-evolution view. Bypasses the DB handler and its middleware')
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
             ->addOption('max', null, InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
             ->addOption('ttl', null, InputOption::VALUE_REQUIRED, 'Max lifetime in ms: stop after the consumer has lived this long, regardless of traffic (the time analogue of --max). Omit to run unbounded')
@@ -73,6 +79,15 @@ final class ConsumeCommand extends Command
         $groupOption = Input::stringOrNull($input, 'group');
         $idempotent = (bool) $input->getOption('idempotent');
         $drain = (bool) $input->getOption('drain');
+        $print = (bool) $input->getOption('print');
+
+        $readerMode = Input::string($input, 'reader');
+        if (! in_array($readerMode, ['writer', 'latest'], true)) {
+            $output->writeln('<error>--reader must be: writer | latest</error>');
+
+            return Command::INVALID;
+        }
+        $latestReader = 'latest' === $readerMode;
 
         // Ephemeral is the throwaway inspector: it always reads the whole log from
         // the beginning and joins a unique, single-use group, so a committed offset
@@ -90,14 +105,16 @@ final class ConsumeCommand extends Command
         // fixed in MessageConsumer and is deliberately not configurable here.
 
         $output->writeln(sprintf(
-            '<comment>topic=%s group=%s profile=%s from=%s idempotent=%s ttl=%s mode=%s</comment>',
+            '<comment>topic=%s group=%s profile=%s from=%s reader=%s idempotent=%s ttl=%s mode=%s%s</comment>',
             $topic,
             $group,
             $lane->profileName(),
             $offsetReset->value,
+            $readerMode,
             $idempotent ? 'yes' : 'no',
             null !== $ttlMs ? $ttlMs . 'ms' : '∞',
             $drain ? 'drain (stop on idle)' : 'tail',
+            $print ? ' print=fields' : '',
         ));
 
         $narrate = $output->isVerbose()
@@ -123,7 +140,7 @@ final class ConsumeCommand extends Command
 
         $messageHandler = $lane->inspectsOnly()
             ? $this->readOnlyHandler($output, $tally)
-            : $this->dispatchingHandler($idempotent, $output, $tally);
+            : $this->dispatchingHandler($idempotent, $latestReader, $print, $output, $tally);
 
         $consumer->run(
             [$topic],
@@ -144,32 +161,54 @@ final class ConsumeCommand extends Command
 
     /**
      * The normal pipeline: interpret each record into a typed DTO and dispatch it
-     * through the bus to the projection handler. With $idempotent the dispatch is
-     * wrapped in the transaction + dedup middleware (effectively-once) — an
-     * orthogonal handler/DB concern, independent of the profile's Kafka config.
+     * through the bus to a handler. By default that handler is the projection
+     * (wrapped in transaction + dedup middleware when $idempotent); with $print it
+     * is the field printer instead — no DB, no middleware, just the DTO's fields,
+     * which is the Block 4 schema-evolution view. $latestReader resolves each
+     * record against its subject's latest schema before decoding (vs its own
+     * writer schema), so the two can be compared on the same log.
      *
      * @param array{handled: int, skipped: int} $tally
      *
      * @return \Closure(\RdKafka\Message): void
      */
-    private function dispatchingHandler(bool $idempotent, OutputInterface $output, array &$tally): \Closure
+    private function dispatchingHandler(bool $idempotent, bool $latestReader, bool $print, OutputInterface $output, array &$tally): \Closure
     {
-        $bus = new ConsumerBus(
-            $this->handler,
-            $idempotent ? [$this->transaction, $this->idempotency] : [],
-        );
+        $handler = $print ? new FieldPrintHandler($output) : $this->handler;
+        $middleware = (! $print && $idempotent) ? [$this->transaction, $this->idempotency] : [];
+        $bus = new ConsumerBus($handler, $middleware);
 
-        return function (\RdKafka\Message $message) use ($bus, $output, &$tally): void {
-            $consumed = $this->interpreter->interpret($message);
+        return function (\RdKafka\Message $message) use ($bus, $latestReader, $print, $output, &$tally): void {
+            // --reader=latest resolves this record's subject (via its message-name)
+            // to the latest registered schema and decodes against it; otherwise the
+            // interpreter decodes the record in its own writer shape.
+            $reader = $latestReader && '' !== ($name = $this->header($message, 'message-name'))
+                ? $this->readers->forMessageName($name)
+                : null;
+
+            $consumed = $this->interpreter->interpret($message, $reader);
             if (null === $consumed) {
+                if ($print) {
+                    $output->writeln(sprintf(
+                        '  <comment>•</comment> %s offset=%d — <error>skipped: could not read this record into the DTO under reader=%s</error>',
+                        '' !== ($n = $this->header($message, 'message-name')) ? $n : '<none>',
+                        $message->offset,
+                        $latestReader ? 'latest' : 'writer',
+                    ));
+                }
                 ++$tally['skipped'];
 
                 return;
             }
 
+            if ($print) {
+                $output->writeln(sprintf('  <info>•</info> %s offset=%d', $consumed->name, $consumed->offset));
+            }
             $bus->dispatch($consumed);
             ++$tally['handled'];
-            $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
+            if (! $print) {
+                $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
+            }
         };
     }
 
@@ -212,6 +251,7 @@ final class ConsumeCommand extends Command
             $message->dto instanceof OrderCreatedDto,
             $message->dto instanceof OrderUpdatedDto,
             $message->dto instanceof OrderCancelledDto,
+            $message->dto instanceof OrderEvolvedDto,
             $message->dto instanceof OrderAuditedDto => $message->dto->orderId,
             default => '?',
         };

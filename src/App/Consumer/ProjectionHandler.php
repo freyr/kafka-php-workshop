@@ -19,7 +19,7 @@ use Doctrine\DBAL\Connection;
  * A DTO type it does not recognise is ignored — the routing table only ever hands
  * it types it declared, so this is defensive, not a branch the room exercises.
  */
-final readonly class ProjectionHandler
+final readonly class ProjectionHandler implements DtoHandler
 {
     public function __construct(
         private Connection $connection,

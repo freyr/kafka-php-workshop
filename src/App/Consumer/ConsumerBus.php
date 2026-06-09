@@ -20,7 +20,7 @@ final readonly class ConsumerBus
      * @param list<Middleware> $middleware outermost first
      */
     public function __construct(
-        private ProjectionHandler $handler,
+        private DtoHandler $handler,
         private array $middleware = [],
     ) {
     }

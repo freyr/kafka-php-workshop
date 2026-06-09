@@ -30,7 +30,7 @@ final class MessageProducerTest extends TestCase
                 return 'ENC';
             }
 
-            public function decode(string $bytes): mixed
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
             {
                 return $bytes;
             }
@@ -65,7 +65,7 @@ final class MessageProducerTest extends TestCase
                 return 'ENC';
             }
 
-            public function decode(string $bytes): mixed
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
             {
                 return $bytes;
             }

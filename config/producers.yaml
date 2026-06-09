@@ -34,3 +34,9 @@ workshop:
             topic: enet.ecommerce.inventory
             subject: com.ecommerce.inventory.inventory_reserved
             schema: '%kafka.schema_dir%/inventory/InventoryReserved.avsc'
+        # Block 4 schema-evolution playground — a flat, throwaway event on its own
+        # topic. You edit this schema in place during the exercise.
+        demo.order.evolved:
+            topic: enet.demo.orders
+            subject: com.ecommerce.demo.order_evolved
+            schema: '%kafka.schema_dir%/demo/OrderEvolved.avsc'

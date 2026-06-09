@@ -19,5 +19,10 @@ interface MessageSerializer
 {
     public function encode(Message $payload): string;
 
-    public function decode(string $bytes): mixed;
+    /**
+     * Decode Confluent-framed bytes. With no reader schema the record comes back in
+     * its writer shape; pass one to resolve writer→reader (filling reader-only
+     * fields from their defaults).
+     */
+    public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed;
 }

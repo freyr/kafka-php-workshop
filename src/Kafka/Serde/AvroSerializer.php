@@ -51,6 +51,11 @@ final readonly class AvroSerializer implements MessageSerializer
         $name = $this->names->nameOf($payload);
         $route = $this->routing->for($name);
 
+        // No conformance guard on purpose: the Avro writer substitutes the schema
+        // default for any field the payload omits. That leniency is the Block 4
+        // lesson — a producer left behind by a schema change ships the default
+        // silently, the registry never complains, and the drift only surfaces when
+        // you read the data back. The exercise has you experience that, prod-style.
         return $this->serializer->encodeRecord($route->subject, \AvroSchema::parse($route->schemaJson()), $payload->envelope());
     }
 
@@ -59,23 +64,26 @@ final readonly class AvroSerializer implements MessageSerializer
      * for bytes that are not Confluent-framed — the events:dispatch robustness
      * contract: skip records you cannot decode instead of crashing.
      *
-     * The message is decoded with its own *writer* schema — the one pinned by the
-     * schema id in the bytes — so the structure comes back exactly as produced (an
-     * old message returns in its old shape, missing fields added later). A genuine
-     * decode failure throws; route that poison message to a DLQ.
+     * With no reader schema the message is decoded with its own *writer* schema —
+     * the one pinned by the schema id in the bytes — so the structure comes back
+     * exactly as produced (an old message returns in its old shape, missing fields
+     * added later). Pass a $readerSchema to resolve writer→reader instead: Avro
+     * fills reader fields the writer lacked from their defaults, so a mixed-version
+     * stream reads back in one uniform shape. A genuine decode failure throws;
+     * route that poison message to a DLQ.
      *
      * @return array<string, mixed>|null
      *
      * @throws SchemaRegistryException
      */
-    public function decode(string $bytes): mixed
+    public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
     {
         if (! $this->isConfluentFramed($bytes)) {
             return null;
         }
 
         /** @var array<string, mixed> $decoded */
-        $decoded = $this->serializer->decodeMessage($bytes);
+        $decoded = $this->serializer->decodeMessage($bytes, $readerSchema);
 
         return $decoded;
     }

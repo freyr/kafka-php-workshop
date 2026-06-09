@@ -30,7 +30,7 @@ final readonly class MessageInterpreter
     ) {
     }
 
-    public function interpret(\RdKafka\Message $message): ?ConsumedMessage
+    public function interpret(\RdKafka\Message $message, ?\AvroSchema $readerSchema = null): ?ConsumedMessage
     {
         $name = $this->header($message, 'message-name');
         $dtoClass = '' === $name ? null : $this->routing->for($name);
@@ -39,7 +39,10 @@ final readonly class MessageInterpreter
         }
 
         try {
-            $decoded = $this->serializer->decode((string) $message->payload);
+            // With a reader schema the record is resolved writer→reader (old records
+            // gain fields added since, from their defaults); without one it decodes
+            // in its own writer shape. kafka:consume --reader selects which.
+            $decoded = $this->serializer->decode((string) $message->payload, $readerSchema);
         } catch (\Throwable) {
             return null; // genuine decode failure (poison) — tolerate, do not crash
         }

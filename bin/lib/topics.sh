@@ -22,6 +22,11 @@ WORKSHOP_TOPICS=(
   "enet.ecommerce.inventory:12"        # key=productId — sale-spike headroom
   "enet.ecommerce.audit:1"             # key=orderId   — single-partition audit log; consumer-group offsets demo (demo:offsets:*)
 
+  # Block 4 — schema-evolution playground. A throwaway flat event (demo.order.evolved)
+  # you evolve in place; single partition so produced/consumed records stay in offset
+  # order and are trivial to read back.
+  "enet.demo.orders:1"                 # key=orderId   — schema-evolution exercise; isolated from the real orders topic
+
   # Block 6 — outbox / CDC. Debezium routes outbox rows to the .outbox.<Aggregate>
   # topic; schema-history is the connector's internal DDL log. bin/debezium-register
   # also ensures these so it stays runnable on its own, but setting them up here

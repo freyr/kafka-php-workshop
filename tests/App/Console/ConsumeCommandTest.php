@@ -12,16 +12,19 @@ use Workshop\App\Console\ConsumeCommand;
 use Workshop\App\Consumer\DtoRouting;
 use Workshop\App\Consumer\EventDedup;
 use Workshop\App\Consumer\IdempotencyMiddleware;
+use Workshop\App\Consumer\LatestSchemaResolver;
 use Workshop\App\Consumer\MessageDenormalizer;
 use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\ProjectionHandler;
 use Workshop\App\Consumer\TransactionMiddleware;
 use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageRouting;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
+use Workshop\Kafka\Serde\SchemaRegistryClient;
 
 /**
  * The option-validation branches return Command::INVALID before any consumer is
@@ -75,7 +78,7 @@ final class ConsumeCommandTest extends TestCase
                 return '';
             }
 
-            public function decode(string $bytes): mixed
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
             {
                 return null;
             }
@@ -91,6 +94,7 @@ final class ConsumeCommandTest extends TestCase
             new ProjectionHandler($connection),
             new TransactionMiddleware($connection),
             new IdempotencyMiddleware(new EventDedup($connection)),
+            new LatestSchemaResolver(new MessageRouting([]), new SchemaRegistryClient(new \GuzzleHttp\Client())),
         );
 
         return new CommandTester($command);

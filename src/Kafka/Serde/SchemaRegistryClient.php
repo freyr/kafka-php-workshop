@@ -10,8 +10,12 @@ use GuzzleHttp\Exception\GuzzleException;
 use Psr\Http\Message\RequestInterface;
 
 use function FlixTech\SchemaRegistryApi\Requests\allSubjectVersionsRequest;
+use function FlixTech\SchemaRegistryApi\Requests\changeSubjectCompatibilityLevelRequest;
 use function FlixTech\SchemaRegistryApi\Requests\checkSchemaCompatibilityAgainstVersionRequest;
+use function FlixTech\SchemaRegistryApi\Requests\deleteSubjectVersionRequest;
 use function FlixTech\SchemaRegistryApi\Requests\registerNewSchemaVersionWithSubjectRequest;
+use function FlixTech\SchemaRegistryApi\Requests\singleSubjectVersionRequest;
+use function FlixTech\SchemaRegistryApi\Requests\subjectCompatibilityLevelRequest;
 
 /**
  * Thin Schema Registry REST client. Wraps the flix-tech PSR-7 request builders
@@ -110,6 +114,96 @@ final readonly class SchemaRegistryClient
         $body = json_decode($response['body'], true);
 
         return \is_array($body) ? array_map(static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0, $body) : [];
+    }
+
+    /**
+     * Fetch the schema JSON of a subject's latest registered version — the reader
+     * schema a consumer resolves mixed-version records against. Returns null when
+     * the subject has no versions yet (404).
+     *
+     * @throws GuzzleException
+     */
+    public function latestSchemaJson(string $subject): ?string
+    {
+        $response = $this->send(singleSubjectVersionRequest($subject, 'latest'));
+
+        if (404 === $response['status']) {
+            return null;
+        }
+
+        $body = json_decode($response['body'], true);
+        $schema = \is_array($body) ? ($body['schema'] ?? null) : null;
+
+        return \is_string($schema) ? $schema : null;
+    }
+
+    /**
+     * The compatibility level in force for a subject. The registry returns the
+     * subject-level override if one is set; when none is (404), the subject simply
+     * inherits the registry's global default, reported here as 'DEFAULT'.
+     *
+     * @throws GuzzleException
+     */
+    public function compatibility(string $subject): string
+    {
+        $response = $this->send(subjectCompatibilityLevelRequest($subject));
+
+        if (404 === $response['status']) {
+            return 'DEFAULT';
+        }
+
+        $body = json_decode($response['body'], true);
+        $level = \is_array($body) ? ($body['compatibilityLevel'] ?? null) : null;
+
+        return \is_string($level) ? $level : 'UNKNOWN';
+    }
+
+    /**
+     * Set a subject's compatibility level (e.g. BACKWARD_TRANSITIVE), overriding the
+     * global default for that subject. Returns the level the registry confirms.
+     *
+     * @throws SchemaRegistrationException when the registry rejects the level
+     * @throws GuzzleException
+     */
+    public function setCompatibility(string $subject, string $level): string
+    {
+        $response = $this->send(changeSubjectCompatibilityLevelRequest($subject, $level));
+
+        if (200 !== $response['status']) {
+            throw SchemaRegistrationException::rejected($subject, $response['status'], $response['body']);
+        }
+
+        $body = json_decode($response['body'], true);
+        $confirmed = \is_array($body) ? ($body['compatibility'] ?? null) : null;
+
+        return \is_string($confirmed) ? $confirmed : $level;
+    }
+
+    /**
+     * Delete one registered version of a subject (default the latest). Returns the
+     * version number the registry removed, or null when there was nothing to delete
+     * (404). A soft delete: the version stops counting toward compatibility checks
+     * and toward `latest`, which is what lets the exercise re-register a candidate
+     * under a stricter level and watch it fail against the versions that remain.
+     *
+     * @throws SchemaRegistrationException when the registry refuses the delete
+     * @throws GuzzleException
+     */
+    public function deleteVersion(string $subject, string $version = 'latest'): ?int
+    {
+        $response = $this->send(deleteSubjectVersionRequest($subject, $version));
+
+        if (404 === $response['status']) {
+            return null;
+        }
+
+        if (200 !== $response['status']) {
+            throw SchemaRegistrationException::rejected($subject, $response['status'], $response['body']);
+        }
+
+        $deleted = json_decode($response['body'], true);
+
+        return is_numeric($deleted) ? (int) $deleted : null;
     }
 
     /**

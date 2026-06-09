@@ -30,7 +30,7 @@ final class SchemaCheckCommand extends Command
     {
         $this
             ->addArgument('type', InputArgument::REQUIRED, 'order.created | payment.processed | inventory.reserved')
-            ->addArgument('schema-file', InputArgument::REQUIRED, 'Path to the candidate .avsc to test (e.g. schemas/orders/evolution/OrderCreated-v2-compatible.avsc)');
+            ->addArgument('schema-file', InputArgument::REQUIRED, 'Path to the candidate .avsc to test (e.g. the edited schemas/orders/OrderCreated.avsc)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

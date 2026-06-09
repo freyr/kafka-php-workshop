@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "OrderEvolved",
+  "namespace": "com.ecommerce.demo",
+  "doc": "Block 4 schema-evolution playground. A deliberately FLAT event — order_id, customer_name, amount_cents — so the consumer prints one field per line and any field you add stands out. You evolve THIS event in place (add a field with a default, register it, later drop the default) instead of the real OrderCreated, so the exercise stays isolated on its own topic (enet.demo.orders) and subject. Subject: com.ecommerce.demo.order_evolved (RecordNameStrategy).",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
+        ]
+      }
+    },
+    {"name": "order_id", "type": "string", "doc": "Business identifier for the order."},
+    {"name": "customer_name", "type": "string", "doc": "Who placed the order."},
+    {"name": "amount_cents", "type": "long", "doc": "Order total in minor units."}
+  ]
+}

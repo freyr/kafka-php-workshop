@@ -46,6 +46,10 @@ services:
     Workshop\App\Consumer\MessageInterpreter: ~
     Workshop\App\Consumer\ProjectionHandler: ~
     Workshop\App\Consumer\EventDedup: ~
+    # Maps a message name to its subject's latest registered schema (the reader
+    # schema for kafka:consume --reader=latest). Autowires MessageRouting + the
+    # registry client.
+    Workshop\App\Consumer\LatestSchemaResolver: ~
     Workshop\App\Consumer\TransactionMiddleware: ~
     Workshop\App\Consumer\IdempotencyMiddleware: ~
 

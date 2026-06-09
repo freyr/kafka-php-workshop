@@ -103,14 +103,42 @@ fresh throwaway group, so omit `-g` there.
 **not** auto-registered on produce):
 
 ```sh
-bin/console kafka:schema:check    <type> <schema-file>   # CI gate; non-zero exit on incompatible
-bin/console kafka:schema:register <type> [schema-file]   # register a subject (registry assigns id, enforces compat)
+bin/console kafka:schema:check    <type> <schema-file>   # compatibility vs the LATEST version; non-zero exit on fail
+bin/console kafka:schema:register <type> [schema-file]   # register a subject (registry assigns id, enforces the level)
 bin/console kafka:schema:register --all                  # bootstrap every routed subject on a fresh stack
 bin/console kafka:schema:versions <type>                 # registered version lineage
+bin/console kafka:schema:compat   <type> [level]         # show or set the subject's compatibility level
+bin/console kafka:schema:delete   <type> [version]       # delete a registered version (default latest)
+bin/console kafka:consume <topic> --print [--reader writer|latest]   # print each record's DTO fields
 ```
 
-Evolution demo schemas: `schemas/orders/evolution/OrderCreated-v2-compatible.avsc`
-(optional field + default → PASS) and `-v2-breaking.avsc` (required field → FAIL).
+The exercise has each participant evolve a **dedicated throwaway event** —
+`demo.order.evolved` (a deliberately flat record on its own topic `enet.demo.orders`,
+isolated from the real `OrderCreated`) — *in place, as in production*, and watch what
+the registry does and does not protect. Schemas are **not** shipped pre-evolved:
+`schemas/demo/OrderEvolved.avsc` starts flat and you add the field yourself.
+
+1. **A registry check is not a code check.** Add a field *with a default* to the
+   schema and register it — BACKWARD-compatible, accepted. Produce *without* updating
+   the message class: it does **not** crash. The Avro writer silently substitutes the
+   default, so those records carry placeholder data the registry was perfectly happy
+   with. The drift only surfaces downstream — the prod failure mode.
+2. **A reader schema is what unifies a mixed-version stream.** Once old and new records
+   coexist, add the field to the read-model DTO and consume:
+   `kafka:consume enet.demo.orders --print --reader writer` *skips* the old records (the
+   DTO can't be built — the field isn't on the wire), while `--reader latest` resolves
+   every record against the latest schema, filling the default into the old ones so they
+   all hydrate. The reader schema, not the writer, is what lets one consumer read a
+   mixed-version log as a single shape.
+3. **Expand-contract can't retire a field on a log.** Drop the default and re-register:
+   it **passes** under the default non-transitive `BACKWARD` (the registry only compares
+   to the latest version, which still has the field) but is **rejected** under
+   `BACKWARD_TRANSITIVE`. With the no-default schema live, `--reader latest` now breaks on
+   the old records — they have no value and no default, and the immutable log is exactly
+   what a database migration would have rewritten.
+
+See the full step-by-step facilitator runbook in the Consulting vault
+(`Block-04-Demo-Runbook.md`).
 
 **Topic & group operations** — shell scripts in `bin/` (php-rdkafka has no admin API):
 `kafka-setup` / `kafka-teardown` (provision/drop the full topic inventory),
@@ -155,7 +183,7 @@ Evolution demo schemas: `schemas/orders/evolution/OrderCreated-v2-compatible.avs
 │   │   └── Consumer/        # read-model DTOs + denormalizer
 │   ├── Kafka/               # the "plugin": Client, Serde, Config, Callback, Runtime
 │   └── Framework/           # Kernel, DI extension, Db (DBAL connection + schema)
-├── schemas/                 # AVRO: orders/ (+evolution/) payments/ inventory/ audit/
+├── schemas/                 # AVRO: orders/ payments/ inventory/ audit/ demo/ (Block 4 evolution)
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # facilitator notes (gitignored)
 ```
