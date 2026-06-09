@@ -31,7 +31,6 @@ services:
             - '../src/Kafka/Runtime/RunLimits.php'
             - '../src/Kafka/Client/MessageProducer.php'
             - '../src/Kafka/Client/MessageConsumer.php'
-            - '../src/Kafka/Admin/TopicAdmin.php'
 
     Workshop\App\Console\:
         resource: '../src/App/Console/'
