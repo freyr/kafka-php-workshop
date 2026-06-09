@@ -187,8 +187,7 @@ final readonly class KafkaProfiles
     /**
      * Let librdkafka commit offsets on a background timer (the default). Lowest
      * overhead, but a commit can land before the handler finishes — at-most-once
-     * under failure. The interval is left at the default and tuned per run via
-     * --auto-commit-interval.
+     * under failure. The interval is left at librdkafka's default.
      *
      * @return list<KafkaSetting>
      */
