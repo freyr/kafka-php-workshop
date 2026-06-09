@@ -33,7 +33,7 @@ docker compose run --rm php bin/console <command> [args]
 **Produce AVRO events** — `kafka:produce:sample` streams enveloped AVRO against Schema Registry:
 
 ```sh
-bin/console kafka:produce:sample [-c N] [--message-name NAME] [--pool N] [--interval MS]
+bin/console kafka:produce:sample [-c N] [--message-name NAME] [--pool N] [--interval MS] [--profile NAME]
 ```
 
 It picks a random message from the catalog (`order.created`, `order.updated`,
@@ -44,6 +44,10 @@ AVRO-encodes it, stamping the wire name and event id as the `message-name` and
 until Ctrl+C (flushing on exit). Schemas are **not** auto-registered — run
 `kafka:schema:register --all` first.
 
+`--profile` picks the producer's reliability tuning: `idempotent` (default —
+`enable.idempotence` + `acks=all` + bounded in-flight: ordered, no retry duplicates)
+or `simple` (untuned librdkafka defaults, which can reorder or duplicate on retry).
+
 **Consume into the orders projection** — one parametrized consumer reads a topic,
 AVRO-decodes each record, routes it by its `message-name` header to a read-model DTO,
 and dispatches it to a generic projection handler. Idempotency and transactions are
@@ -52,7 +56,7 @@ bus middleware *outside* the handler (a simplified command-bus shape).
 ```sh
 bin/console kafka:consume:setup                                    # provision orders + processed_events (idempotent)
 bin/console kafka:consume <topic> [--profile NAME] [-g GROUP] [--from WHERE] [--idempotent] \
-    [--interval MS] [--auto-commit-interval MS] [-m MAX] [-t TIMEOUT_MS]
+    [--interval MS] [--auto-commit-interval MS] [-m MAX] [--ttl MS] [--drain]
 ```
 
 `--profile` selects the consumer's Kafka configuration. It bundles the commit mode
@@ -67,6 +71,12 @@ and the rebalancing strategy — the two move together, so one name picks both:
 `--from` sets where a run starts, independent of the committed offset: `beginning`
 (replay the whole log), `committed` (resume — the default), or `end` (only new
 records). `ephemeral` ignores `--from` and always reads from the beginning.
+
+By default the consumer **tails** — it polls forever, stopping only on Ctrl+C. Three
+opt-in conditions bound a run, and any of them can combine: `-m/--max N` (stop after N
+messages), `--ttl MS` (a lifetime cap — stop once the consumer has lived this long,
+the time analogue of `--max`), and `--drain` (stop at the first empty poll — read the
+backlog to the end, then exit). `--interval MS` throttles the pause between messages.
 
 `--idempotent` is **orthogonal** to the profile: it records each `event_id` in
 `processed_events` in the same DB transaction as the `orders` upsert, so a
@@ -93,32 +103,24 @@ fresh throwaway group, so omit `-g` there.
 **not** auto-registered on produce):
 
 ```sh
-bin/console schema:check    <type> <schema-file>   # CI gate; non-zero exit on incompatible
-bin/console schema:register <type> [schema-file]   # register a subject (registry assigns id, enforces compat)
-bin/console schema:register --all                  # bootstrap every routed subject on a fresh stack
-bin/console schema:versions <type>                 # registered version lineage
+bin/console kafka:schema:check    <type> <schema-file>   # CI gate; non-zero exit on incompatible
+bin/console kafka:schema:register <type> [schema-file]   # register a subject (registry assigns id, enforces compat)
+bin/console kafka:schema:register --all                  # bootstrap every routed subject on a fresh stack
+bin/console kafka:schema:versions <type>                 # registered version lineage
 ```
 
 Evolution demo schemas: `schemas/orders/evolution/OrderCreated-v2-compatible.avsc`
 (optional field + default → PASS) and `-v2-breaking.avsc` (required field → FAIL).
 
-**Config & operations** (Block 8) — raw `\RdKafka`, the callbacks have no higher-level surface:
-
-```sh
-bin/console config:show [--producer] [--consumer]                 # recommended settings: value · default · why
-bin/console config:stats [topic] [-g GROUP] [-r SECS] [--slow MS] # raw consumer: lag/RTT/queue from the stats callback
-bin/console topic:list                                            # list topics (raw metadata API)
-bin/console topic:describe <topic>                                # partition count
-```
-
-**Admin shell scripts** in `bin/` (php-rdkafka has no admin API): `kafka-setup`,
-`kafka-teardown` (provision/drop the full topic inventory), `topic-create`,
-`topic-delete`, `topic-describe`, `group-describe`, `group-reset`, `group-delete`,
-`partition-offsets`.
+**Topic & group operations** — shell scripts in `bin/` (php-rdkafka has no admin API):
+`kafka-setup` / `kafka-teardown` (provision/drop the full topic inventory),
+`topic-create`, `topic-delete`, `topic-describe`, `group-describe`, `group-reset`,
+`group-delete`, `partition-offsets`, plus Debezium CDC helpers `debezium-register`,
+`debezium-status`, `debezium-delete`.
 
 ## Producer & serializer model
 
-- **`Message`** (`src/Produce/Message.php`) is an abstract base. Each event is built
+- **`Message`** (`src/App/Producer/Message.php`) is an abstract base. Each event is built
   through a static `create()` named constructor (`OrderCreated::create($orderId)`,
   `PaymentProcessed::create($orderId)`, …). The base supplies the envelope autonomously:
   `envelope()` = `{metadata: {event_id, timestamp}, ...payload}`. The partition key
@@ -147,11 +149,12 @@ bin/console topic:describe <topic>                                # partition co
 │   ├── producers.yaml       # produce-side routing (name → type/topic/subject/schema)
 │   └── consumers.yaml       # consume-side routing (name → DTO)
 ├── src/
-│   ├── Console/             # one class per command (#[AsCommand])
-│   ├── Produce/             # Message base + events, MessageName, routing
-│   ├── Consume/             # read-model DTOs + denormalizer
-│   ├── Kafka/               # Client, Serde, Config, Callback, Runtime, Admin
-│   └── Framework/           # Kernel + DI extension
+│   ├── App/                 # the application: producer + consumer + CLI
+│   │   ├── Console/         # one class per command (#[AsCommand])
+│   │   ├── Producer/        # Message base + events, MessageName, routing
+│   │   └── Consumer/        # read-model DTOs + denormalizer
+│   ├── Kafka/               # the "plugin": Client, Serde, Config, Callback, Runtime
+│   └── Framework/           # Kernel, DI extension, Db (DBAL connection + schema)
 ├── schemas/                 # AVRO: orders/ (+evolution/) payments/ inventory/ audit/
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # facilitator notes (gitignored)
@@ -160,7 +163,7 @@ bin/console topic:describe <topic>                                # partition co
 ## Conventions
 
 - **PSR-4 autodiscovery.** `config/services.yaml` autowires `Workshop\Kafka\` and
-  `Workshop\Console\`; any `Command` is auto-tagged and registered. Adding a command
+  `Workshop\App\Console\`; any `Command` is auto-tagged and registered. Adding a command
   means adding one class — no wiring edits.
 - **Generic, parametrized commands over per-demo classes.** Add behavior with a flag,
   not a new class; reach for a new command only for a genuinely distinct operation.
