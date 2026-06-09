@@ -91,8 +91,7 @@ final readonly class MessageConsumer
                     case RD_KAFKA_RESP_ERR_NO_ERROR:
                         $handler($message);
                         if (CommitPolicy::AfterEachMessage === $policy) {
-                            $this->consumer->commit($message);
-                            $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
+                            $this->commitSync($message, $narrate);
                         } elseif (CommitPolicy::AsyncAfterEachMessage === $policy) {
                             // Fire-and-forget: no broker round-trip blocks the loop.
                             $this->consumer->commitAsync($message);
@@ -150,6 +149,37 @@ final readonly class MessageConsumer
         }
 
         return $processed;
+    }
+
+    /**
+     * Synchronous commit of one message's offset, tolerating the failure a rebalance
+     * makes expected. Between handling a record and committing it, a rebalance can
+     * revoke that partition or advance the group generation; the broker then rejects
+     * the commit (ILLEGAL_GENERATION / REBALANCE_IN_PROGRESS / UNKNOWN_MEMBER_ID).
+     * That is not fatal: the handler already ran, but the offset is no longer ours to
+     * commit, so the record is redelivered to the partition's new owner — at-least-once
+     * still holds. Any other commit error is a genuine fault and propagates.
+     */
+    private function commitSync(Message $message, ?\Closure $narrate): void
+    {
+        try {
+            $this->consumer->commit($message);
+            $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
+        } catch (Exception $e) {
+            if (! $this->isRebalanceCommitError($e)) {
+                throw $e;
+            }
+            $this->say($narrate, sprintf('⚠ commit skipped — partition=%d reassigned mid-rebalance; offset %d will be redelivered', $message->partition, $message->offset));
+        }
+    }
+
+    private function isRebalanceCommitError(Exception $e): bool
+    {
+        return in_array($e->getCode(), [
+            RD_KAFKA_RESP_ERR_ILLEGAL_GENERATION,
+            RD_KAFKA_RESP_ERR_REBALANCE_IN_PROGRESS,
+            RD_KAFKA_RESP_ERR_UNKNOWN_MEMBER_ID,
+        ], true);
     }
 
     private function say(?\Closure $narrate, string $line): void
