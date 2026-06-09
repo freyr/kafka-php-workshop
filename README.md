@@ -56,7 +56,7 @@ bus middleware *outside* the handler (a simplified command-bus shape).
 ```sh
 bin/console kafka:consume:setup                                    # provision orders + processed_events (idempotent)
 bin/console kafka:consume <topic> [--profile NAME] [-g GROUP] [--from WHERE] [--idempotent] \
-    [--interval MS] [--auto-commit-interval MS] [-m MAX] [--ttl MS] [--drain]
+    [--interval MS] [-m MAX] [--ttl MS] [--drain]
 ```
 
 `--profile` selects the consumer's Kafka configuration. It bundles the commit mode
@@ -65,7 +65,7 @@ and the rebalancing strategy — the two move together, so one name picks both:
 | `--profile` | commit | rebalancing | membership | handles? |
 |---|---|---|---|---|
 | `ephemeral` (default) | never | — (lone member) | throwaway group | no — inspects only, prints each record's name/id from the headers, no decode |
-| `default` | librdkafka background auto-commit (`--auto-commit-interval` ms) | eager `range,roundrobin` (stop-the-world) | dynamic | yes |
+| `default` | librdkafka background auto-commit | eager `range,roundrobin` (stop-the-world) | dynamic | yes |
 | `modern` | explicit, after each handler | cooperative-sticky (incremental) | static (`group.instance.id`) | yes |
 
 `--from` sets where a run starts, independent of the committed offset: `beginning`

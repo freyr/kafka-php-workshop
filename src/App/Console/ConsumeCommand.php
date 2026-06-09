@@ -50,7 +50,6 @@ final class ConsumeCommand extends Command
             ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end. Default committed (resume); ephemeral always reads from beginning', OffsetReset::Committed->value)
             ->addOption('idempotent', null, InputOption::VALUE_NONE, 'Wrap the handler in a DB transaction that dedups on event_id — effectively-once. Orthogonal to the profile; ignored by ephemeral (which never handles)')
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
-            ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --profile=default); default 5000', '5000')
             ->addOption('max', null, InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
             ->addOption('ttl', null, InputOption::VALUE_REQUIRED, 'Max lifetime in ms: stop after the consumer has lived this long, regardless of traffic (the time analogue of --max). Omit to run unbounded')
             ->addOption('drain', null, InputOption::VALUE_NONE, 'Stop at the first empty poll — read the backlog until drained, then exit (batch mode). Without it the consumer tails continuously, stopping only on --max, --ttl, or Ctrl-C');
@@ -71,7 +70,6 @@ final class ConsumeCommand extends Command
         $max = Input::int($input, 'max');
         $ttlMs = Input::intOrNull($input, 'ttl');
         $pauseMs = Input::int($input, 'interval');
-        $autoCommitMs = Input::int($input, 'auto-commit-interval');
         $groupOption = Input::stringOrNull($input, 'group');
         $idempotent = (bool) $input->getOption('idempotent');
         $drain = (bool) $input->getOption('drain');
@@ -90,15 +88,6 @@ final class ConsumeCommand extends Command
         // lifetime, below), and --drain (stop at the first empty poll). With none set
         // the consumer tails forever, ending only on a signal. The poll cadence is
         // fixed in MessageConsumer and is deliberately not configurable here.
-
-        // The lane names the KafkaProfile (the librdkafka config). The only runtime
-        // override is the default lane's auto-commit interval — every other config
-        // difference (commit mode, rebalancing, static membership) is in the profile.
-        $overrides = ConsumerProfile::Default === $lane
-            ? [
-                'auto.commit.interval.ms' => (string) $autoCommitMs,
-            ]
-            : [];
 
         $output->writeln(sprintf(
             '<comment>topic=%s group=%s profile=%s from=%s idempotent=%s ttl=%s mode=%s</comment>',
@@ -119,7 +108,7 @@ final class ConsumeCommand extends Command
 
         // The factory assembles the consumer's callbacks (rebalance + error) so the
         // rebalance protocol stays matched to the profile's assignment strategy.
-        $consumer = $this->consumers->create($lane->profileName(), $group, $offsetReset, $narrate, $overrides);
+        $consumer = $this->consumers->create($lane->profileName(), $group, $offsetReset, $narrate);
 
         $tally = [
             'handled' => 0,
