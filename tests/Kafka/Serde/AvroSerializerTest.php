@@ -6,10 +6,10 @@ namespace Workshop\Tests\Kafka\Serde;
 
 use FlixTech\AvroSerializer\Objects\RecordSerializer;
 use PHPUnit\Framework\TestCase;
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\MessageRouting;
+use Workshop\App\Producer\OrderCreated;
 use Workshop\Kafka\Serde\AvroSerializer;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
-use Workshop\Produce\OrderCreated;
 
 final class AvroSerializerTest extends TestCase
 {

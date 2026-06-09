@@ -11,9 +11,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Uid\Uuid;
+use Workshop\App\Producer\MessageCatalog;
 use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Serde\MessageSerializer;
-use Workshop\Produce\MessageCatalog;
 
 #[AsCommand(
     name: 'kafka:produce:sample',

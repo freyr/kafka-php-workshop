@@ -7,16 +7,16 @@ namespace Workshop\Tests\Console;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageCatalog;
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\MessageRouting;
 use Workshop\Console\ProduceCommand;
 use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
-use Workshop\Produce\Message;
-use Workshop\Produce\MessageCatalog;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
 
 /**
  * The input-validation branches return Command::INVALID before any client is

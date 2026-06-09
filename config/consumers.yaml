@@ -3,7 +3,7 @@
 # names this service consumes. Unknown names are ignored at runtime.
 workshop:
     consumers:
-        order.created: Workshop\Consume\OrderCreatedDto
-        order.updated: Workshop\Consume\OrderUpdatedDto
-        order.cancelled: Workshop\Consume\OrderCancelledDto
-        order.audited: Workshop\Consume\OrderAuditedDto
+        order.created: Workshop\App\Consumer\OrderCreatedDto
+        order.updated: Workshop\App\Consumer\OrderUpdatedDto
+        order.cancelled: Workshop\App\Consumer\OrderCancelledDto
+        order.audited: Workshop\App\Consumer\OrderAuditedDto

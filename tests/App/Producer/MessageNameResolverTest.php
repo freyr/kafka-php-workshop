@@ -1,0 +1,41 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workshop\Tests\App\Producer;
+
+use PHPUnit\Framework\TestCase;
+use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\OrderCreated;
+
+final class MessageNameResolverTest extends TestCase
+{
+    public function testResolvesNameFromAttribute(): void
+    {
+        $resolver = new MessageNameResolver();
+
+        self::assertSame('order.created', $resolver->nameOf(OrderCreated::create('ord-1')));
+    }
+
+    public function testCachedResultIsStableAcrossCalls(): void
+    {
+        $resolver = new MessageNameResolver();
+        $message = OrderCreated::create('ord-1');
+
+        self::assertSame($resolver->nameOf($message), $resolver->nameOf($message));
+    }
+
+    public function testThrowsWhenAttributeMissing(): void
+    {
+        $message = new class extends Message {
+            public function __construct()
+            {
+                parent::__construct('x', []);
+            }
+        };
+
+        $this->expectException(\LogicException::class);
+        (new MessageNameResolver())->nameOf($message);
+    }
+}

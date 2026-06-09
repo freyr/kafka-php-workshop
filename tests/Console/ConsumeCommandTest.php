@@ -8,20 +8,20 @@ use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Consumer\DtoRouting;
+use Workshop\App\Consumer\EventDedup;
+use Workshop\App\Consumer\IdempotencyMiddleware;
+use Workshop\App\Consumer\MessageDenormalizer;
+use Workshop\App\Consumer\MessageInterpreter;
+use Workshop\App\Consumer\ProjectionHandler;
+use Workshop\App\Consumer\TransactionMiddleware;
+use Workshop\App\Producer\Message;
 use Workshop\Console\ConsumeCommand;
-use Workshop\Consume\DtoRouting;
-use Workshop\Consume\EventDedup;
-use Workshop\Consume\IdempotencyMiddleware;
-use Workshop\Consume\MessageDenormalizer;
-use Workshop\Consume\MessageInterpreter;
-use Workshop\Consume\ProjectionHandler;
-use Workshop\Consume\TransactionMiddleware;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
-use Workshop\Produce\Message;
 
 /**
  * The option-validation branches return Command::INVALID before any consumer is

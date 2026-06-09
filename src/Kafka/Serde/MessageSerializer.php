@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Serde;
 
-use Workshop\Produce\Message;
+use Workshop\App\Producer\Message;
 
 /**
  * The seam between a typed Message and the bytes on the wire. The AvroSerializer

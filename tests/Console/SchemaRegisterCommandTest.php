@@ -7,9 +7,9 @@ namespace Workshop\Tests\Console;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Producer\MessageRouting;
 use Workshop\Console\Schema\SchemaRegisterCommand;
 use Workshop\Kafka\Serde\SchemaRegistryClient;
-use Workshop\Produce\MessageRouting;
 
 /**
  * Both guard branches return before any registry call, so they run without a

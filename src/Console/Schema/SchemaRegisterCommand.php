@@ -10,10 +10,10 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Workshop\App\Producer\MessageRouting;
 use Workshop\Console\Input;
 use Workshop\Kafka\Serde\SchemaRegistrationException;
 use Workshop\Kafka\Serde\SchemaRegistryClient;
-use Workshop\Produce\MessageRouting;
 
 #[AsCommand(
     name: 'kafka:schema:register',

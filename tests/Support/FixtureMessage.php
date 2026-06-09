@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\Tests\Support;
 
-use Workshop\Produce\Message;
-use Workshop\Produce\MessageName;
+use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageName;
 
 /**
  * A minimal Message for serde and producer tests: an arbitrary payload behind the

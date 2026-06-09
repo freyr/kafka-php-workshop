@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Workshop\Tests\Kafka\Client;
 
 use PHPUnit\Framework\TestCase;
+use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\MessageRouting;
+use Workshop\App\Producer\OrderCreated;
 use Workshop\Kafka\Client\MessageProducer;
 use Workshop\Kafka\Serde\MessageSerializer;
-use Workshop\Produce\Message;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
-use Workshop\Produce\OrderCreated;
 use Workshop\Tests\Support\FixtureMessage;
 
 final class MessageProducerTest extends TestCase

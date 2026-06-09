@@ -7,8 +7,8 @@ namespace Workshop\Framework\DependencyInjection;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
-use Workshop\Consume\DtoRouting;
-use Workshop\Produce\MessageRouting;
+use Workshop\App\Consumer\DtoRouting;
+use Workshop\App\Producer\MessageRouting;
 
 /**
  * Turns the validated `workshop:` config into the two routing services. The

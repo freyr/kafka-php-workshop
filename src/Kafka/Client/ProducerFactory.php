@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Workshop\Kafka\Client;
 
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\MessageRouting;
 use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfile;
 use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
 
 /**
  * Builds a MessageProducer from a named profile. One of three role factories — a

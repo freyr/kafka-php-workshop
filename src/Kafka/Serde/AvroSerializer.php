@@ -6,9 +6,9 @@ namespace Workshop\Kafka\Serde;
 
 use FlixTech\AvroSerializer\Objects\RecordSerializer;
 use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
-use Workshop\Produce\Message;
-use Workshop\Produce\MessageNameResolver;
-use Workshop\Produce\MessageRouting;
+use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageNameResolver;
+use Workshop\App\Producer\MessageRouting;
 
 /**
  * Block 3 serializer: the MessageSerializer seam over the Confluent AVRO wire

@@ -38,17 +38,17 @@ services:
 
     # The Symfony-Serializer-backed denormalizer that turns a decoded payload into
     # a read-model DTO (the DtoRouting table is wired by WorkshopExtension).
-    Workshop\Consume\MessageDenormalizer: ~
+    Workshop\App\Consumer\MessageDenormalizer: ~
 
     # The consumer application: interpret a record into a typed DTO, then dispatch it
     # to the generic projection handler. Each is autowired by type; the value objects
     # (ConsumedMessage), the Middleware interface, and the ConsumerBus (assembled per
     # commit strategy inside kafka:consume) are NOT services.
-    Workshop\Consume\MessageInterpreter: ~
-    Workshop\Consume\ProjectionHandler: ~
-    Workshop\Consume\EventDedup: ~
-    Workshop\Consume\TransactionMiddleware: ~
-    Workshop\Consume\IdempotencyMiddleware: ~
+    Workshop\App\Consumer\MessageInterpreter: ~
+    Workshop\App\Consumer\ProjectionHandler: ~
+    Workshop\App\Consumer\EventDedup: ~
+    Workshop\App\Consumer\TransactionMiddleware: ~
+    Workshop\App\Consumer\IdempotencyMiddleware: ~
 
     # The consumer's MySQL store. ConnectionFactory turns the DATABASE_URL parameter
     # into a DBAL Connection (the single construction seam); SchemaInstaller (autowired
@@ -65,12 +65,12 @@ services:
     # Resolves a message's wire name from its #[MessageName] attribute, caching the
     # class => name mapping so reflection runs once per type (produce-side only;
     # the Produce namespace is otherwise value objects, never services).
-    Workshop\Produce\MessageNameResolver: ~
+    Workshop\App\Producer\MessageNameResolver: ~
 
     # The buildable AVRO message catalog the `produce` command randomizes over (a
     # stateless lookup; like MessageNameResolver, the one service in an otherwise
     # value-object namespace).
-    Workshop\Produce\MessageCatalog: ~
+    Workshop\App\Producer\MessageCatalog: ~
 
     # The wire is AVRO, so the MessageSerializer seam (injected by produce and
     # consume) resolves to the AvroSerializer. Commands that name the concrete
