@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Config\ClientRole;
 use Workshop\Kafka\Config\KafkaProfile;
 use Workshop\Kafka\Config\KafkaProfiles;
+use Workshop\Kafka\Runtime\RebalanceProtocol;
 
 final class KafkaProfilesTest extends TestCase
 {
@@ -55,6 +56,9 @@ final class KafkaProfilesTest extends TestCase
         self::assertSame('false', $kv['enable.auto.commit'] ?? null);
         self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
         self::assertSame('cooperative-sticky', $kv['partition.assignment.strategy'] ?? null);
+        // ...which the factory must read as the cooperative protocol, so the rebalance
+        // callback uses incrementalAssign rather than the eager assign API.
+        self::assertSame(RebalanceProtocol::Cooperative, RebalanceProtocol::fromAssignmentStrategy($profile->setting('partition.assignment.strategy')));
         // Static membership: the modern consumer pins group.instance.id.
         self::assertArrayHasKey('group.instance.id', $kv);
     }
@@ -69,6 +73,9 @@ final class KafkaProfilesTest extends TestCase
         self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
         // Eager rebalancing — the stop-the-world contrast to cooperative-sticky.
         self::assertSame('range,roundrobin', $kv['partition.assignment.strategy'] ?? null);
+        // The factory must read this as the eager protocol — calling incrementalAssign
+        // here is what librdkafka rejects.
+        self::assertSame(RebalanceProtocol::Eager, RebalanceProtocol::fromAssignmentStrategy($profile->setting('partition.assignment.strategy')));
         self::assertArrayNotHasKey('group.instance.id', $kv);
     }
 
@@ -84,6 +91,9 @@ final class KafkaProfilesTest extends TestCase
         self::assertArrayNotHasKey('group.instance.id', $kv);
         // No assignment override — the lone member needs no rebalancing strategy.
         self::assertArrayNotHasKey('partition.assignment.strategy', $kv);
+        // An unset strategy still negotiates librdkafka's eager default, so the
+        // factory must derive Eager — not assume cooperative for every profile.
+        self::assertSame(RebalanceProtocol::Eager, RebalanceProtocol::fromAssignmentStrategy($profile->setting('partition.assignment.strategy')));
     }
 
     public function testUnknownProfileThrowsWithKnownNames(): void

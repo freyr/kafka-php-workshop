@@ -8,12 +8,22 @@ use RdKafka\Conf;
 use RdKafka\KafkaConsumer;
 use RdKafka\TopicPartition;
 use Workshop\Kafka\Runtime\OffsetReset;
+use Workshop\Kafka\Runtime\RebalanceProtocol;
 
 /**
- * Cooperative-sticky rebalancing. Instead of the eager assign()/assign(null)
- * dance, only the partitions that actually move are revoked or assigned
- * incrementally, so a rebalance no longer stops every consumer in the group.
- * Lifted from the Block 8 kafka:config:stats command so every consumer profile gets it.
+ * Drives partition assignment on every rebalance, using the assign API that matches
+ * the negotiated RebalanceProtocol:
+ *
+ *  - Cooperative (cooperative-sticky): only the partitions that actually move are
+ *    revoked or assigned, via incrementalAssign() / incrementalUnassign(), so a
+ *    rebalance no longer stops every consumer in the group.
+ *  - Eager (range/roundrobin, or no strategy set): the whole assignment is revoked
+ *    and re-handed each rebalance, via assign($all) / assign(null).
+ *
+ * The protocol is NOT a free choice — librdkafka rejects the wrong API for the
+ * negotiated strategy ("must be made using assign() when rebalance protocol type is
+ * EAGER"), killing the consumer on its first assignment. So it is derived from the
+ * profile's partition.assignment.strategy, never declared independently.
  *
  * It also enforces the run's OffsetReset: for Beginning/End the start offset is
  * stamped onto each partition as it is assigned, so the run reads from the log's
@@ -27,6 +37,7 @@ final readonly class RebalanceCallback implements ConfCallback
     public function __construct(
         private ?\Closure $narrate = null,
         private OffsetReset $offsetReset = OffsetReset::Committed,
+        private RebalanceProtocol $protocol = RebalanceProtocol::Eager,
     ) {
     }
 
@@ -41,13 +52,19 @@ final readonly class RebalanceCallback implements ConfCallback
                         $assigning = $partitions ?? [];
                         $assigned = $this->withSeek($assigning);
                         $this->narrate('⇄ assign ' . $this->names($assigned) . $this->seekSuffix());
-                        $consumer->incrementalAssign($assigned);
+                        match ($this->protocol) {
+                            RebalanceProtocol::Cooperative => $consumer->incrementalAssign($assigned),
+                            RebalanceProtocol::Eager => $consumer->assign($assigned),
+                        };
 
                         break;
 
                     case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
                         $this->narrate('⇄ revoke ' . $this->names($partitions));
-                        $consumer->incrementalUnassign($partitions ?? []);
+                        match ($this->protocol) {
+                            RebalanceProtocol::Cooperative => $consumer->incrementalUnassign($partitions ?? []),
+                            RebalanceProtocol::Eager => $consumer->assign(null),
+                        };
 
                         break;
 

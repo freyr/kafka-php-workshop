@@ -22,4 +22,20 @@ final readonly class KafkaProfile
         public array $settings,
     ) {
     }
+
+    /**
+     * The configured value for a librdkafka key, or null if the profile leaves it at
+     * the librdkafka default. Lets a caller derive behavior from the same settings
+     * ConfBuilder applies, rather than re-declaring it.
+     */
+    public function setting(string $key): ?string
+    {
+        foreach ($this->settings as $setting) {
+            if ($setting->key === $key) {
+                return $setting->value;
+            }
+        }
+
+        return null;
+    }
 }

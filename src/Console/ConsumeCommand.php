@@ -20,9 +20,6 @@ use Workshop\Consume\OrderCreatedDto;
 use Workshop\Consume\OrderUpdatedDto;
 use Workshop\Consume\ProjectionHandler;
 use Workshop\Consume\TransactionMiddleware;
-use Workshop\Kafka\Callback\CallbackKit;
-use Workshop\Kafka\Callback\ErrorCallback;
-use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\ConsumerProfile;
 use Workshop\Kafka\Runtime\OffsetReset;
@@ -123,12 +120,9 @@ final class ConsumeCommand extends Command
             }
         : null;
 
-        $callbacks = new CallbackKit(
-            new RebalanceCallback($narrate, $offsetReset),
-            new ErrorCallback($narrate),
-        );
-
-        $consumer = $this->consumers->create($lane->profileName(), $group, $callbacks, $overrides);
+        // The factory assembles the consumer's callbacks (rebalance + error) so the
+        // rebalance protocol stays matched to the profile's assignment strategy.
+        $consumer = $this->consumers->create($lane->profileName(), $group, $offsetReset, $narrate, $overrides);
 
         $tally = [
             'handled' => 0,
