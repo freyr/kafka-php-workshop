@@ -160,9 +160,9 @@ final class ConsumeCommand extends Command
      * The normal pipeline: decode each record, then denormalize it into a typed DTO
      * and dispatch it through the MessageBus, which routes the DTO to its one
      * registered handler (wrapped in transaction + dedup middleware when
-     * $idempotent). $print is an orthogonal lens: it dumps the raw decoded record
-     * (the wire fields, before the DTO) for every record — independent of which
-     * handler runs, and visible even when the record then fails to hydrate its DTO.
+     * $idempotent). $print replaces dispatch with a view-only lens: it dumps the raw
+     * decoded record (the wire fields, before the DTO) and skips the bus entirely —
+     * no DB handler, no middleware — while still surfacing decode/hydration skips.
      * $latestReader resolves each record against its subject's latest schema before
      * decoding (vs its own writer schema), so the two can be compared on one log.
      *
@@ -213,9 +213,14 @@ final class ConsumeCommand extends Command
                 return;
             }
 
-            $this->bus->dispatch($consumed, $idempotent);
+            // --print is a view-only lens: the raw dump above already showed the
+            // record, so the DTO is never dispatched — no DB handler, no middleware
+            // (the option's documented contract).
+            if (! $print) {
+                $this->bus->dispatch($consumed, $idempotent);
+                $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
+            }
             ++$tally['handled'];
-            $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
         };
     }
 

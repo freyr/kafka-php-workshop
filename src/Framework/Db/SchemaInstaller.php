@@ -24,6 +24,21 @@ final readonly class SchemaInstaller
     }
 
     /**
+     * Drops both tables so the next install() starts from an empty store — the
+     * reset path behind `kafka:consume:setup --fresh` (integration runs and demo
+     * resets want a known-empty projection, not just ensured tables).
+     *
+     * @return list<string> the tables dropped, for the command to report
+     */
+    public function drop(): array
+    {
+        $this->connection->executeStatement('DROP TABLE IF EXISTS orders');
+        $this->connection->executeStatement('DROP TABLE IF EXISTS processed_events');
+
+        return ['orders', 'processed_events'];
+    }
+
+    /**
      * @return list<string> the tables ensured, for the command to report
      */
     public function install(): array

@@ -30,7 +30,7 @@ IDEMPOTENT ?=
 consume-setup: ## provision the consumer store (orders + processed_events tables)
 	docker compose run --rm php bin/console kafka:consume:setup
 consume: ## consume into the projection; override TOPIC/GROUP/FROM/PROFILE, set IDEMPOTENT=1 (e.g. make consume PROFILE=default FROM=beginning IDEMPOTENT=1)
-	docker compose run --rm php bin/console kafka:consume $(TOPIC) -g $(GROUP) --from $(FROM) --profile $(PROFILE) $(if $(IDEMPOTENT),--idempotent,)
+	docker compose run --rm php bin/console kafka:consume $(TOPIC) --group $(GROUP) --from $(FROM) --profile $(PROFILE) $(if $(IDEMPOTENT),--idempotent,)
 
 ##@ PHP container
 bash: ## interactive bash shell in an ephemeral php container
@@ -38,6 +38,25 @@ bash: ## interactive bash shell in an ephemeral php container
 
 test: ## run phpunit inside the php container (composer test)
 	docker compose run --rm php composer test
+
+##@ Integration tests
+integration: integration-reset integration-test ## full cycle: reset kafka + db state, then run the integration suite
+
+integration-reset: ## wipe state: recreate every topic, drop + recreate the projection tables, re-register schemas
+	docker compose up -d kafka schema-registry mysql
+	@active=$$(docker compose exec -T kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list --state Stable 2>/dev/null | tail -n +2); \
+	if [ -n "$$active" ]; then \
+		echo "✗ live consumers are attached to the broker — stop them first, they would race the suite and project into the shared database:"; \
+		echo "$$active"; \
+		exit 1; \
+	fi
+	bin/kafka-teardown
+	bin/kafka-setup
+	docker compose run --rm php php bin/console kafka:consume:setup --fresh
+	docker compose run --rm php php bin/console kafka:schema:register --all
+
+integration-test: ## run the integration testsuite (assumes the stack is up and state is reset)
+	docker compose run --rm -e KAFKA_INTEGRATION=1 php composer test:integration
 
 ##@ Code style
 ecs: ## report easy-coding-standard violations

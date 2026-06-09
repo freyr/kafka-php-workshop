@@ -7,6 +7,7 @@ namespace Workshop\App\Console;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\Framework\Db\SchemaInstaller;
 
@@ -22,8 +23,19 @@ final class ProjectionSetupCommand extends Command
         parent::__construct();
     }
 
+    protected function configure(): void
+    {
+        $this->addOption('fresh', null, InputOption::VALUE_NONE, 'Drop both tables first, then recreate them empty — a full projection reset instead of the default ensure-only run');
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ((bool) $input->getOption('fresh')) {
+            foreach ($this->installer->drop() as $table) {
+                $output->writeln(sprintf('  <comment>✗</comment> %s dropped', $table));
+            }
+        }
+
         foreach ($this->installer->install() as $table) {
             $output->writeln(sprintf('  <info>✓</info> %s', $table));
         }

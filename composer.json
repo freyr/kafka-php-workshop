@@ -38,15 +38,16 @@
         }
     },
     "scripts": {
-        "test": "phpunit",
+        "test": "phpunit --testsuite workshop",
+        "test:integration": "phpunit --testsuite integration",
         "ecs": "ecs check",
         "ecs-fix": "ecs check --fix",
         "phpstan": "phpstan analyse --memory-limit=512M",
-        "demo:rebalance:consumer": "php bin/console kafka:consume enet.ecommerce.orders -g rebalance-demo --profile=modern --from=committed --interval 300 -v",
+        "demo:rebalance:consumer": "php bin/console kafka:consume enet.ecommerce.orders --group rebalance-demo --profile=modern --from=committed --interval 300 -v",
         "demo:rebalance:producer": "php bin/console kafka:produce:sample --message-name order.created --interval 200",
         "demo:offsets:producer": "php bin/console kafka:produce:sample --message-name order.audited --interval 500",
-        "demo:offsets:consumer-a": "php bin/console kafka:consume enet.ecommerce.audit -g offsets-demo-a --profile=default --from=committed -v",
-        "demo:offsets:consumer-b": "php bin/console kafka:consume enet.ecommerce.audit -g offsets-demo-b --profile=default --from=committed -v"
+        "demo:offsets:consumer-a": "php bin/console kafka:consume enet.ecommerce.audit --group offsets-demo-a --profile=default --from=committed -v",
+        "demo:offsets:consumer-b": "php bin/console kafka:consume enet.ecommerce.audit --group offsets-demo-b --profile=default --from=committed -v"
     },
     "scripts-descriptions": {
         "demo:rebalance:consumer": "Join the shared 'rebalance-demo' group on enet.ecommerce.orders and tail forever with verbose ⇄ assign/revoke output. Run in several terminals to watch cooperative-sticky rebalancing as members join/leave.",

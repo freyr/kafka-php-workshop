@@ -6,9 +6,16 @@
          cacheDirectory=".phpunit.cache"
          failOnWarning="true"
          failOnRisky="true">
+    <!-- workshop: the infra-free unit suite (composer test). integration: runs the
+         real commands against the live compose stack (kafka + schema-registry +
+         mysql); gated behind KAFKA_INTEGRATION=1 and driven by `make integration`. -->
     <testsuites>
         <testsuite name="workshop">
             <directory>tests</directory>
+            <exclude>tests/Integration</exclude>
+        </testsuite>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
         </testsuite>
     </testsuites>
     <!-- ignoreIndirectDeprecations: drop deprecations triggered in third-party
