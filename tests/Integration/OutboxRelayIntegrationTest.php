@@ -22,8 +22,12 @@ final class OutboxRelayIntegrationTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        new OutboxSchemaInstaller($this->db())->install();
-        $this->db()->executeStatement('TRUNCATE TABLE outbox');
+        // Drop-and-recreate (not ensure-and-truncate): another test in the suite
+        // may have provisioned the outbox in the AVRO payload format, and ensure
+        // would silently keep that column type.
+        $installer = new OutboxSchemaInstaller($this->db());
+        $installer->drop();
+        $installer->install();
     }
 
     public function testPlaceCommitsTheOrderAndItsOutboxRowTogether(): void

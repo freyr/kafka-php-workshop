@@ -9,9 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Workshop\App\Outbox\OrderStateWriter;
 use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\OutboxRepository;
+use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
+use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageNameResolver;
 use Workshop\App\Producer\OrderCreated;
+use Workshop\Kafka\Serde\MessageSerializer;
 
 /**
  * The placer's collaborators are real (they share the one mocked Connection), so
@@ -57,6 +60,31 @@ final class OutboxPlacerTest extends TestCase
         self::assertSame($message->envelope(), $payload);
     }
 
+    public function testAvroFormatStoresTheSerializerBytes(): void
+    {
+        $statements = [];
+
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('transactional')
+            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
+        $connection->method('executeStatement')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
+                $statements[] = [$sql, $params];
+
+                return 1;
+            });
+
+        $message = OrderCreated::create('ord-1');
+
+        $this->placer($connection)->place($message, false, PayloadFormat::Avro);
+
+        // The stored payload is exactly what the MessageSerializer produced —
+        // Confluent-framed wire bytes, not a JSON re-encoding of the envelope.
+        $outbox = $statements[1][1];
+        self::assertSame("\x00FRAMED-AVRO", $outbox['payload']);
+    }
+
     public function testCrashBeforeCommitEscapesTheTransaction(): void
     {
         $connection = $this->createMock(Connection::class);
@@ -72,11 +100,24 @@ final class OutboxPlacerTest extends TestCase
 
     private function placer(Connection $connection): OutboxPlacer
     {
+        $serializer = new class implements MessageSerializer {
+            public function encode(Message $payload): string
+            {
+                return "\x00FRAMED-AVRO";
+            }
+
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
+            {
+                return null;
+            }
+        };
+
         return new OutboxPlacer(
             $connection,
             new OutboxRepository($connection),
             new OrderStateWriter($connection),
             new MessageNameResolver(),
+            $serializer,
         );
     }
 }

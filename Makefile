@@ -79,10 +79,10 @@ groups: ## list all consumer groups
 	docker compose exec kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list
 
 ##@ Outbox (Block 6 transactional outbox)
-outbox-setup: ## provision the outbox table (FRESH=1 to drop + recreate it empty)
-	docker compose run --rm php bin/console outbox:setup $(if $(FRESH),--fresh,)
-outbox-place: ## place business writes: order + outbox row in one tx (COUNT=n NAME=order.created FAIL=1)
-	docker compose run --rm php bin/console outbox:place $(if $(COUNT),--count $(COUNT),) $(if $(NAME),--message-name $(NAME),) $(if $(FAIL),--fail,)
+outbox-setup: ## provision the outbox table (FRESH=1 to drop + recreate; FORMAT=avro for the AVRO payload variant)
+	docker compose run --rm php bin/console outbox:setup $(if $(FRESH),--fresh,) $(if $(FORMAT),--format $(FORMAT),)
+outbox-place: ## place business writes: order + outbox row in one tx (COUNT=n NAME=order.created FAIL=1 FORMAT=avro)
+	docker compose run --rm php bin/console outbox:place $(if $(COUNT),--count $(COUNT),) $(if $(NAME),--message-name $(NAME),) $(if $(FAIL),--fail,) $(if $(FORMAT),--format $(FORMAT),)
 outbox-relay: ## run the PHP polling relay until Ctrl+C (ONCE=1 to drain the backlog and exit)
 	docker compose run --rm php bin/console outbox:relay $(if $(ONCE),--once,)
 outbox-watch: ## tail the relayed topic with keys + headers (both relay flavors land here)
@@ -91,8 +91,10 @@ outbox-watch: ## tail the relayed topic with keys + headers (both relay flavors 
 		--property print.headers=true --property print.key=true
 
 ##@ Debezium (Block 6 CDC outbox)
-debezium-register: ## register the Debezium MySQL outbox connector
+debezium-register: ## register the connector for the JSON-payload outbox (EventRouter expands the envelope)
 	bin/debezium-register
+debezium-register-avro: ## register the connector for the AVRO-payload outbox (ByteArrayConverter pass-through; replaces the JSON one)
+	bin/debezium-register config/debezium-outbox-connector-avro.json
 debezium-status: ## show the connector + task state
 	bin/debezium-status
 debezium-delete: ## delete the connector

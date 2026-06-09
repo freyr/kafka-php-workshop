@@ -3,8 +3,11 @@ set -euo pipefail
 
 # Registers the Debezium MySQL outbox connector (Block 6 — CDC relay). Waits for
 # the Kafka Connect REST API, pre-creates the routed + schema-history topics
-# (broker auto-create is off), then (re)creates the connector from
-# config/debezium-outbox-connector.json.
+# (broker auto-create is off), then (re)creates the connector from the given
+# config file (default: config/debezium-outbox-connector.json — the JSON-payload
+# flavor; pass config/debezium-outbox-connector-avro.json for the AVRO-payload
+# pass-through). Both configs share one connector name, so registering one
+# replaces the other — the two flavors can never run side by side.
 #
 # Always a CLEAN start, so re-running converges no matter what happened before:
 #
@@ -20,8 +23,10 @@ set -euo pipefail
 
 CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONFIG="${ROOT}/config/debezium-outbox-connector.json"
+CONFIG="${1:-${ROOT}/config/debezium-outbox-connector.json}"
+[ -f "$CONFIG" ] || { echo "no such connector config: ${CONFIG}" >&2; exit 1; }
 NAME="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -n1)"
+echo "using config ${CONFIG}"
 
 echo "waiting for Kafka Connect at ${CONNECT_URL} …"
 for _ in $(seq 1 60); do

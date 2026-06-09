@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workshop\App\Console;
 
+use Doctrine\DBAL\Exception\DriverException;
+use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -11,6 +13,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Uid\Uuid;
 use Workshop\App\Outbox\OutboxPlacer;
+use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
 use Workshop\App\Producer\MessageCatalog;
 
@@ -42,7 +45,8 @@ final class OutboxPlaceCommand extends Command
             ->addOption('message-name', null, InputOption::VALUE_REQUIRED, 'Place only this event (order.created | order.updated | order.cancelled); omit to pick a random one per write')
             ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool; default: 8', '8')
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between writes; default: 10', '10')
-            ->addOption('fail', null, InputOption::VALUE_NONE, 'Crash each transaction right before COMMIT — the rollback beat: afterwards neither the order row nor the outbox row exists');
+            ->addOption('fail', null, InputOption::VALUE_NONE, 'Crash each transaction right before COMMIT — the rollback beat: afterwards neither the order row nor the outbox row exists')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Payload encoding: json (envelope as JSON text) | avro (Confluent-framed bytes against the registered schemas — must match outbox:setup --format)', 'json');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -52,6 +56,14 @@ final class OutboxPlaceCommand extends Command
         $poolSize = Input::int($input, 'pool');
         $intervalMs = Input::int($input, 'interval');
         $fail = (bool) $input->getOption('fail');
+
+        try {
+            $format = PayloadFormat::fromOption(Input::string($input, 'format'));
+        } catch (\InvalidArgumentException $e) {
+            $output->writeln('<error>' . $e->getMessage() . '</error>');
+
+            return Command::INVALID;
+        }
 
         if ($count < 1) {
             $output->writeln('<error>--count must be >= 1.</error>');
@@ -82,12 +94,26 @@ final class OutboxPlaceCommand extends Command
             $message = $this->catalog->build($name, $orderId);
 
             try {
-                $this->placer->place($message, $fail);
+                $this->placer->place($message, $fail, $format);
             } catch (SimulatedCrash) {
                 ++$rolledBack;
                 $output->writeln(sprintf('<comment>✗ rolled back</comment> %s order=%s — crashed before COMMIT, so the order write AND the outbox row vanished together', $name, $orderId));
 
                 continue;
+            } catch (SchemaRegistryException) {
+                $output->writeln('<error>No schema registered for this event.</error>');
+                $output->writeln('AVRO placements encode against the registry — register schemas first, then place again:');
+                $output->writeln('  <comment>bin/console kafka:schema:register --all</comment>');
+
+                return Command::FAILURE;
+            } catch (DriverException $e) {
+                // The likeliest cause: encoding does not match the payload column
+                // (AVRO bytes into a JSON column, or the reverse).
+                $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+                $output->writeln(sprintf('Is the outbox provisioned for this format? Re-provision with:'));
+                $output->writeln(sprintf('  <comment>bin/console outbox:setup --fresh --format %s</comment>', $format->value));
+
+                return Command::FAILURE;
             }
 
             ++$placed;

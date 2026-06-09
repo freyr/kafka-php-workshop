@@ -149,8 +149,8 @@ publishes the event to Kafka afterwards, so the broker is never on the business
 write's critical path:
 
 ```sh
-bin/console outbox:setup [--fresh]                        # provision the outbox (and ensure orders)
-bin/console outbox:place [-c N] [--message-name NAME] [--pool N] [--fail]
+bin/console outbox:setup [--fresh] [--format json|avro]   # provision the outbox (and ensure orders)
+bin/console outbox:place [-c N] [--message-name NAME] [--pool N] [--fail] [--format json|avro]
 bin/console outbox:relay [--batch N] [--interval MS] [--once] [--profile NAME]
 ```
 
@@ -169,8 +169,23 @@ a trace, the beat that produce-then-commit cannot replicate. The relay is either
   (`config/debezium-outbox-connector.json`).
 
 Run one flavor at a time (they'd double-publish the same rows); watch the result
-with `make outbox-watch`. Full facilitator runbook: `Block-06-Demo-Runbook.md` in
-the Consulting vault.
+with `make outbox-watch`.
+
+**AVRO payload variant** — `--format avro` (on both `outbox:setup` and
+`outbox:place`; switching formats needs `--fresh`) makes the *application* encode
+the envelope to Confluent-framed AVRO via the same `MessageSerializer` as
+`kafka:produce:sample`, stored in a binary column. Both relays then move opaque
+bytes — the PHP relay unchanged, Debezium via
+`config/debezium-outbox-connector-avro.json` (`make debezium-register-avro`:
+no JSON expansion, `ByteArrayConverter` pass-through). Relayed records are
+**byte-identical** to directly produced ones — same registered schemas, same
+registry governance — so `kafka:consume enet.ecommerce.outbox.Order` decodes and
+projects them like any AVRO topic. The trade-off vs the JSON format: the payload
+is no longer readable in MySQL, and schemas must be registered before placing.
+Connect-level Avro (deriving schemas from expanded JSON) is deliberately not
+used: inferred schemas vary per record once nulls are dropped — the registry
+deserves better. Full facilitator runbook: `Block-06-Demo-Runbook.md` in the
+Consulting vault.
 
 **Topic & group operations** — shell scripts in `bin/` (php-rdkafka has no admin API):
 `kafka-setup` / `kafka-teardown` (provision/drop the full topic inventory),

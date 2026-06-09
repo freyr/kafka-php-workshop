@@ -12,8 +12,10 @@ use Workshop\App\Console\OutboxPlaceCommand;
 use Workshop\App\Outbox\OrderStateWriter;
 use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\OutboxRepository;
+use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageCatalog;
 use Workshop\App\Producer\MessageNameResolver;
+use Workshop\Kafka\Serde\MessageSerializer;
 
 /**
  * The placer is real and runs against one mocked Connection whose transactional()
@@ -59,6 +61,46 @@ final class OutboxPlaceCommandTest extends TestCase
 
         self::assertSame(Command::INVALID, $tester->getStatusCode());
         self::assertStringContainsString('--pool must be >= 1', $tester->getDisplay());
+    }
+
+    public function testUnknownFormatIsRejected(): void
+    {
+        $tester = $this->tester(self::createStub(Connection::class));
+
+        $tester->execute([
+            '--format' => 'protobuf',
+        ]);
+
+        self::assertSame(Command::INVALID, $tester->getStatusCode());
+        self::assertStringContainsString('Unknown format: protobuf', $tester->getDisplay());
+        self::assertStringContainsString('json | avro', $tester->getDisplay());
+    }
+
+    public function testAvroFormatStoresTheFramedBytes(): void
+    {
+        $statements = [];
+
+        $connection = self::createStub(Connection::class);
+        $connection->method('transactional')
+            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
+        $connection->method('executeStatement')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
+                $statements[] = [$sql, $params];
+
+                return 1;
+            });
+
+        $tester = $this->tester($connection);
+
+        $tester->execute([
+            '--format' => 'avro',
+            '--message-name' => 'order.created',
+            '--interval' => '0',
+        ]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+        // The outbox INSERT carries the serializer's wire bytes, not JSON.
+        self::assertSame("\x00FRAMED-AVRO", $statements[1][1]['payload']);
     }
 
     public function testEachPlacementRunsItsOwnTransaction(): void
@@ -113,11 +155,24 @@ final class OutboxPlaceCommandTest extends TestCase
 
     private function tester(Connection $connection): CommandTester
     {
+        $serializer = new class implements MessageSerializer {
+            public function encode(Message $payload): string
+            {
+                return "\x00FRAMED-AVRO";
+            }
+
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
+            {
+                return null;
+            }
+        };
+
         $placer = new OutboxPlacer(
             $connection,
             new OutboxRepository($connection),
             new OrderStateWriter($connection),
             new MessageNameResolver(),
+            $serializer,
         );
 
         return new CommandTester(new OutboxPlaceCommand($placer, new MessageCatalog()));
