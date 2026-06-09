@@ -37,7 +37,7 @@ bin/console kafka:produce:sample [-c N] [--message-name NAME] [--pool N] [--inte
 ```
 
 It picks a random message from the catalog (`order.created`, `order.updated`,
-`order.cancelled`, `payment.processed`, `inventory.reserved`) — or one pinned with
+`order.cancelled`, `order.audited`, `demo.order.evolved`) — or one pinned with
 `--message-name` — keys each by an order id drawn from a reusable `--pool`, and
 AVRO-encodes it, stamping the wire name and event id as the `message-name` and
 `event-id` Kafka headers. With `-c N` it sends N and stops; without it, it streams
@@ -153,7 +153,7 @@ See the full step-by-step facilitator runbook in the Consulting vault
 
 - **`Message`** (`src/App/Producer/Message.php`) is an abstract base. Each event is built
   through a static `create()` named constructor (`OrderCreated::create($orderId)`,
-  `PaymentProcessed::create($orderId)`, …). The base supplies the envelope autonomously:
+  `OrderAudited::create($orderId)`, …). The base supplies the envelope autonomously:
   `envelope()` = `{metadata: {event_id, timestamp}, ...payload}`. The partition key
   is a transport concern, kept out of the payload.
 - **Wire name as a header.** The name lives in a `#[MessageName('order.created')]`
@@ -186,7 +186,7 @@ See the full step-by-step facilitator runbook in the Consulting vault
 │   │   └── Consumer/        # read-model DTOs + denormalizer
 │   ├── Kafka/               # the "plugin": Client, Serde, Config, Callback, Runtime
 │   └── Framework/           # Kernel, DI extension, Db (DBAL connection + schema)
-├── schemas/                 # AVRO: orders/ payments/ inventory/ audit/ demo/ (Block 4 evolution)
+├── schemas/                 # AVRO: orders/ audit/ demo/ (Block 4 evolution)
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # facilitator notes (gitignored)
 ```

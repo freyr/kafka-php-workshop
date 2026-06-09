@@ -31,7 +31,7 @@ final class SchemaRegisterCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('type', InputArgument::OPTIONAL, 'order.created | order.updated | order.cancelled | payment.processed | inventory.reserved (omit with --all)')
+            ->addArgument('type', InputArgument::OPTIONAL, implode(' | ', $this->routing->names()) . ' (omit with --all)')
             ->addArgument('schema-file', InputArgument::OPTIONAL, 'Path to the .avsc to register (default: the subject\'s canonical schema from the routing table)')
             ->addOption('all', null, InputOption::VALUE_NONE, 'Register every routed subject\'s canonical schema — the one-shot bootstrap for a fresh stack');
     }

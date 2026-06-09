@@ -30,7 +30,7 @@ final class SchemaDeleteCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('type', InputArgument::REQUIRED, 'order.created | payment.processed | inventory.reserved')
+            ->addArgument('type', InputArgument::REQUIRED, implode(' | ', $this->routing->names()))
             ->addArgument('version', InputArgument::OPTIONAL, 'Version number to delete; omit for the latest', 'latest');
     }
 
