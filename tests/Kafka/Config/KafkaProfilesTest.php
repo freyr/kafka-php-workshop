@@ -7,32 +7,40 @@ namespace Workshop\Tests\Kafka\Config;
 use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Config\ClientRole;
 use Workshop\Kafka\Config\KafkaProfile;
-use Workshop\Kafka\Config\KafkaTuning;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 
-final class ProfileRegistryTest extends TestCase
+final class KafkaProfilesTest extends TestCase
 {
-    private ProfileRegistry $registry;
+    private KafkaProfiles $profiles;
 
     protected function setUp(): void
     {
-        $this->registry = new ProfileRegistry(new KafkaTuning());
+        $this->profiles = new KafkaProfiles();
     }
 
-    public function testIdempotentProducerCarriesTheReliabilityTrio(): void
+    public function testIdempotentProducerCarriesTheFullProductionTuning(): void
     {
-        $profile = $this->registry->get('producer.idempotent');
+        $profile = $this->profiles->get('producer.idempotent');
 
         self::assertSame(ClientRole::Producer, $profile->role);
         $kv = $this->toKeyValue($profile);
+        // Reliability + compression: the exactly-once trio.
         self::assertSame('true', $kv['enable.idempotence'] ?? null);
         self::assertSame('all', $kv['acks'] ?? null);
         self::assertSame('lz4', $kv['compression.type'] ?? null);
+        // Batching, queue bounds and timeouts: the rest of the production tuning.
+        self::assertSame('50', $kv['linger.ms'] ?? null);
+        self::assertSame('10000', $kv['batch.num.messages'] ?? null);
+        self::assertSame('1000000', $kv['batch.size'] ?? null);
+        self::assertSame('100000', $kv['queue.buffering.max.messages'] ?? null);
+        self::assertSame('262144', $kv['queue.buffering.max.kbytes'] ?? null);
+        self::assertSame('300000', $kv['delivery.timeout.ms'] ?? null);
+        self::assertSame('30000', $kv['request.timeout.ms'] ?? null);
     }
 
     public function testSimpleProducerHasNoOverrides(): void
     {
-        $profile = $this->registry->get('producer.simple');
+        $profile = $this->profiles->get('producer.simple');
 
         self::assertSame(ClientRole::Producer, $profile->role);
         self::assertSame([], $profile->settings);
@@ -40,7 +48,7 @@ final class ProfileRegistryTest extends TestCase
 
     public function testAtLeastOnceConsumerCarriesCommitAndRebalanceSettings(): void
     {
-        $profile = $this->registry->get('consumer.at-least-once');
+        $profile = $this->profiles->get('consumer.at-least-once');
 
         self::assertSame(ClientRole::Consumer, $profile->role);
         $kv = $this->toKeyValue($profile);
@@ -53,7 +61,7 @@ final class ProfileRegistryTest extends TestCase
 
     public function testEphemeralConsumerDropsStaticMembership(): void
     {
-        $profile = $this->registry->get('consumer.ephemeral');
+        $profile = $this->profiles->get('consumer.ephemeral');
 
         $kv = $this->toKeyValue($profile);
         self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
@@ -66,12 +74,12 @@ final class ProfileRegistryTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('producer.simple');
 
-        $this->registry->get('does-not-exist');
+        $this->profiles->get('does-not-exist');
     }
 
     public function testAllReturnsTheRegisteredProfiles(): void
     {
-        $names = array_map(static fn (KafkaProfile $p): string => $p->name, $this->registry->all());
+        $names = array_map(static fn (KafkaProfile $p): string => $p->name, $this->profiles->all());
 
         self::assertSame([
             'producer.simple',

@@ -8,7 +8,7 @@ use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfile;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
 use Workshop\Produce\MessageNameResolver;
 use Workshop\Produce\MessageRouting;
@@ -24,7 +24,7 @@ final readonly class ProducerFactory
 {
     public function __construct(
         private ConfBuilder $confBuilder,
-        private ProfileRegistry $profiles,
+        private KafkaProfiles $profiles,
         private MessageRouting $routing,
         private MessageNameResolver $names,
     ) {

@@ -8,19 +8,18 @@ use PHPUnit\Framework\TestCase;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\BrokerUnreachableException;
 use Workshop\Kafka\Config\ConfBuilder;
-use Workshop\Kafka\Config\KafkaTuning;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Config\TcpBrokerProbe;
 
 final class ConfBuilderTest extends TestCase
 {
     private const BROKERS = 'broker.test:29092';
 
-    private ProfileRegistry $profiles;
+    private KafkaProfiles $profiles;
 
     protected function setUp(): void
     {
-        $this->profiles = new ProfileRegistry(new KafkaTuning());
+        $this->profiles = new KafkaProfiles();
     }
 
     public function testBuildSetsBrokerListAndClientId(): void
@@ -39,7 +38,7 @@ final class ConfBuilderTest extends TestCase
         // compression.type is an alias; librdkafka's dump() uses the canonical name.
         self::assertSame('lz4', $conf['compression.codec']);
         // acks=all is set too, but it is a topic-scoped librdkafka property and
-        // does not surface in the global Conf::dump(); ProfileRegistryTest covers it.
+        // does not surface in the global Conf::dump(); KafkaProfilesTest covers it.
     }
 
     public function testRuntimeOverridesWinOverProfileAndDefaults(): void

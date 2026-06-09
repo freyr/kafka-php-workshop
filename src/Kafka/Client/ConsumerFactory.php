@@ -10,7 +10,7 @@ use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfile;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 
 /**
  * Builds a MessageConsumer from a named profile and a group id — the consume-side
@@ -23,7 +23,7 @@ final readonly class ConsumerFactory
 {
     public function __construct(
         private ConfBuilder $confBuilder,
-        private ProfileRegistry $profiles,
+        private KafkaProfiles $profiles,
     ) {
     }
 

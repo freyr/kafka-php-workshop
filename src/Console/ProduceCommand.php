@@ -47,7 +47,7 @@ final class ProduceCommand extends Command
         $intervalMs = Input::int($input, 'interval');
 
         // Map the two friendly demo values to the named producer profiles. Constrained
-        // to producer profiles on purpose — ProfileRegistry::get() is role-agnostic, so
+        // to producer profiles on purpose — KafkaProfiles::get() is role-agnostic, so
         // passing a raw name through would let a consumer profile build a producer.
         $profile = match (Input::string($input, 'profile')) {
             'idempotent' => 'producer.idempotent',

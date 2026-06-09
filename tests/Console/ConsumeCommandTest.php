@@ -19,8 +19,7 @@ use Workshop\Consume\TransactionMiddleware;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
-use Workshop\Kafka\Config\KafkaTuning;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
 use Workshop\Produce\Message;
 
@@ -67,7 +66,7 @@ final class ConsumeCommandTest extends TestCase
 
         $consumers = new ConsumerFactory(
             new ConfBuilder('broker.test:29092', $noop),
-            new ProfileRegistry(new KafkaTuning()),
+            new KafkaProfiles(),
         );
 
         $serializer = new class implements MessageSerializer {

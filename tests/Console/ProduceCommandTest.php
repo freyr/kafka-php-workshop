@@ -11,8 +11,7 @@ use Workshop\Console\ProduceCommand;
 use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
-use Workshop\Kafka\Config\KafkaTuning;
-use Workshop\Kafka\Config\ProfileRegistry;
+use Workshop\Kafka\Config\KafkaProfiles;
 use Workshop\Kafka\Serde\MessageSerializer;
 use Workshop\Produce\Message;
 use Workshop\Produce\MessageCatalog;
@@ -86,7 +85,7 @@ final class ProduceCommandTest extends TestCase
 
         $factory = new ProducerFactory(
             new ConfBuilder('broker.test:29092', $noop),
-            new ProfileRegistry(new KafkaTuning()),
+            new KafkaProfiles(),
             new MessageRouting([]),
             new MessageNameResolver(),
         );
