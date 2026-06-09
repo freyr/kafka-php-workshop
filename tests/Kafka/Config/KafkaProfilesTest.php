@@ -46,27 +46,44 @@ final class KafkaProfilesTest extends TestCase
         self::assertSame([], $profile->settings);
     }
 
-    public function testAtLeastOnceConsumerCarriesCommitAndRebalanceSettings(): void
+    public function testModernConsumerCommitsExplicitlyWithCooperativeStickyAndStaticMembership(): void
     {
-        $profile = $this->profiles->get('consumer.at-least-once');
+        $profile = $this->profiles->get('consumer.modern');
 
         self::assertSame(ClientRole::Consumer, $profile->role);
         $kv = $this->toKeyValue($profile);
         self::assertSame('false', $kv['enable.auto.commit'] ?? null);
         self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
         self::assertSame('cooperative-sticky', $kv['partition.assignment.strategy'] ?? null);
-        // Static membership: the at-least-once consumer pins group.instance.id.
+        // Static membership: the modern consumer pins group.instance.id.
         self::assertArrayHasKey('group.instance.id', $kv);
     }
 
-    public function testEphemeralConsumerDropsStaticMembership(): void
+    public function testDefaultConsumerAutoCommitsWithEagerRebalancingAndNoStaticMembership(): void
+    {
+        $profile = $this->profiles->get('consumer.default');
+
+        self::assertSame(ClientRole::Consumer, $profile->role);
+        $kv = $this->toKeyValue($profile);
+        self::assertSame('true', $kv['enable.auto.commit'] ?? null);
+        self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
+        // Eager rebalancing — the stop-the-world contrast to cooperative-sticky.
+        self::assertSame('range,roundrobin', $kv['partition.assignment.strategy'] ?? null);
+        self::assertArrayNotHasKey('group.instance.id', $kv);
+    }
+
+    public function testEphemeralConsumerNeverCommitsAndDropsStaticMembership(): void
     {
         $profile = $this->profiles->get('consumer.ephemeral');
 
         $kv = $this->toKeyValue($profile);
         self::assertSame('earliest', $kv['auto.offset.reset'] ?? null);
+        // Never commits, even in the background — the throwaway inspector.
+        self::assertSame('false', $kv['enable.auto.commit'] ?? null);
         // No static membership — a throwaway group must not be fenced on re-run.
         self::assertArrayNotHasKey('group.instance.id', $kv);
+        // No assignment override — the lone member needs no rebalancing strategy.
+        self::assertArrayNotHasKey('partition.assignment.strategy', $kv);
     }
 
     public function testUnknownProfileThrowsWithKnownNames(): void
@@ -84,9 +101,9 @@ final class KafkaProfilesTest extends TestCase
         self::assertSame([
             'producer.simple',
             'producer.idempotent',
-            'consumer.at-least-once',
-            'consumer.dynamic',
             'consumer.ephemeral',
+            'consumer.default',
+            'consumer.modern',
         ], $names);
     }
 

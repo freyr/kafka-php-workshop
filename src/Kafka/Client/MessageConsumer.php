@@ -61,6 +61,10 @@ final readonly class MessageConsumer
 
         $processed = 0;
         $startedAt = time();
+        // The last message whose handler returned successfully — committed
+        // synchronously on close under AsyncAfterEachMessage so the final offset is
+        // durable. Stays null until the first message is handled.
+        $lastHandled = null;
 
         try {
             while ($running) {
@@ -80,6 +84,11 @@ final readonly class MessageConsumer
                         if (CommitPolicy::AfterEachMessage === $policy) {
                             $this->consumer->commit($message);
                             $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
+                        } elseif (CommitPolicy::AsyncAfterEachMessage === $policy) {
+                            // Fire-and-forget: no broker round-trip blocks the loop.
+                            $this->consumer->commitAsync($message);
+                            $lastHandled = $message;
+                            $this->say($narrate, sprintf('→ commit queued (async) partition=%d offset=%d', $message->partition, $message->offset));
                         }
                         ++$processed;
 
@@ -112,7 +121,22 @@ final readonly class MessageConsumer
                 }
             }
         } finally {
-            // Final commit + LeaveGroup, even if the handler threw.
+            // Under async commits the per-message commitAsync() may not have landed
+            // yet. One synchronous commit of the LAST HANDLED message makes the final
+            // offset durable before we leave the group. Committing that specific
+            // message — not the no-arg consumed position — is what keeps this
+            // at-least-once: a message whose handler threw was never recorded as
+            // handled, so it stays uncommitted and is reprocessed next run.
+            if (CommitPolicy::AsyncAfterEachMessage === $policy && null !== $lastHandled) {
+                try {
+                    $this->consumer->commit($lastHandled);
+                    $this->say($narrate, sprintf('✓ final sync commit partition=%d offset=%d', $lastHandled->partition, $lastHandled->offset));
+                } catch (Exception $e) {
+                    $this->say($narrate, 'final commit failed: ' . $e->getMessage());
+                }
+            }
+
+            // Final LeaveGroup, even if the handler threw.
             $this->consumer->close();
         }
 

@@ -43,17 +43,17 @@ final class ConsumeCommandTest extends TestCase
         self::assertStringContainsString('Unknown offset reset', $tester->getDisplay());
     }
 
-    public function testUnknownCommitStrategyIsRejected(): void
+    public function testUnknownConsumerProfileIsRejected(): void
     {
         $tester = $this->tester();
 
         $tester->execute([
             'topic' => 'orders',
-            '--commit' => 'sometimes',
+            '--profile' => 'sometimes',
         ]);
 
         self::assertSame(Command::INVALID, $tester->getStatusCode());
-        self::assertStringContainsString('Unknown commit strategy', $tester->getDisplay());
+        self::assertStringContainsString('Unknown consumer profile', $tester->getDisplay());
     }
 
     private function tester(): CommandTester

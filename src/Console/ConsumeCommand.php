@@ -24,13 +24,13 @@ use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Client\ConsumerFactory;
-use Workshop\Kafka\Runtime\ConsumeStrategy;
+use Workshop\Kafka\Runtime\ConsumerProfile;
 use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RunLimits;
 
 #[AsCommand(
     name: 'kafka:consume',
-    description: 'Consume a topic into the orders projection. Parametrize the group, start offset, throttle, and commit strategy (per-message / auto / idempotent).',
+    description: 'Consume a topic into the orders projection. Pick a consumer profile (ephemeral / default / modern), the start offset, and throttle; layer effectively-once on with --idempotent.',
 )]
 final class ConsumeCommand extends Command
 {
@@ -53,21 +53,21 @@ final class ConsumeCommand extends Command
     {
         $this
             ->addArgument('topic', InputArgument::REQUIRED, 'Topic to consume (e.g. enet.ecommerce.orders)')
-            ->addOption('group', 'g', InputOption::VALUE_REQUIRED, 'Consumer group id; omit for an ephemeral group that starts from earliest')
-            ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end', OffsetReset::Beginning->value)
-            ->addOption('commit', null, InputOption::VALUE_REQUIRED, 'Mode: per-message | auto | idempotent | readonly (separate group, never commits, prints name/id only)', ConsumeStrategy::ReadOnly->value)
+            ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Consumer profile: ephemeral (throwaway, never commits, skips every record — inspect only) | default (background auto-commit, eager rebalancing) | modern (explicit commit, cooperative-sticky + static membership)', ConsumerProfile::Ephemeral->value)
+            ->addOption('group', 'g', InputOption::VALUE_REQUIRED, 'Consumer group id (default/modern only; ephemeral always uses a fresh throwaway group). Omit to default to consume-<topic>')
+            ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Where to start: beginning | committed | end. Default committed (resume); ephemeral always reads from beginning', OffsetReset::Committed->value)
+            ->addOption('idempotent', null, InputOption::VALUE_NONE, 'Wrap the handler in a DB transaction that dedups on event_id — effectively-once. Orthogonal to the profile; ignored by ephemeral (which never handles)')
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
-            ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --commit=auto); default 5000', '5000')
+            ->addOption('auto-commit-interval', null, InputOption::VALUE_REQUIRED, 'Background commit interval in ms (only with --profile=default); default 5000', '5000')
             ->addOption('max', 'm', InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
-            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run. Omit to tail continuously — stop only on --max or Ctrl-C')
-            ->addOption('static-membership', null, InputOption::VALUE_NONE, 'Add a group.instance.id so a restart rejoins without a full rebalance; off by default — leave off for short CLI runs');
+            ->addOption('timeout', 't', InputOption::VALUE_REQUIRED, 'Receive timeout in ms; an empty poll within it ends the run. Omit to tail continuously — stop only on --max or Ctrl-C');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         try {
             $offsetReset = OffsetReset::fromOption(Input::string($input, 'from'));
-            $strategy = ConsumeStrategy::fromOption(Input::string($input, 'commit'));
+            $lane = ConsumerProfile::fromOption(Input::string($input, 'profile'));
         } catch (\InvalidArgumentException $e) {
             $output->writeln('<error>' . $e->getMessage() . '</error>');
 
@@ -80,7 +80,17 @@ final class ConsumeCommand extends Command
         $pauseMs = Input::int($input, 'interval');
         $autoCommitMs = Input::int($input, 'auto-commit-interval');
         $groupOption = Input::stringOrNull($input, 'group');
-        $staticMembership = (bool) $input->getOption('static-membership');
+        $idempotent = (bool) $input->getOption('idempotent');
+
+        // Ephemeral is the throwaway inspector: it always reads the whole log from
+        // the beginning and joins a unique, single-use group, so a committed offset
+        // never enters the picture. The other lanes honor --from and a stable group.
+        if ($lane->inspectsOnly()) {
+            $offsetReset = OffsetReset::Beginning;
+        }
+        $group = $lane->inspectsOnly()
+            ? sprintf('ephemeral-%s-%d-%d', $topic, getmypid(), time())
+            : ($groupOption ?? sprintf('consume-%s', $topic));
 
         // No --timeout → tail the topic continuously: keep polling forever and stop
         // only on --max or a signal. An explicit --timeout restores the read-until-idle
@@ -88,27 +98,22 @@ final class ConsumeCommand extends Command
         $stopOnIdle = null !== $timeoutMs;
         $pollTimeoutMs = $timeoutMs ?? self::TAIL_POLL_MS;
 
-        // Each lane maps to a named profile rather than a runtime tweak, so the config
-        // it applies is visible in kafka:config:show:
-        //   readonly      → ephemeral (throwaway, never commits)
-        //   no -g         → ephemeral (throwaway group from earliest)
-        //   named         → dynamic (dynamic membership: rebalance on every join/leave)
-        //   named +static → at-least-once (group.instance.id: rejoin without rebalance)
-        // The dynamic-vs-static pair is the rebalancing contrast for a named group.
-        [$profile, $group] = match (true) {
-            $strategy->isReadOnly() => ['consumer.ephemeral', sprintf('readonly-%s-%d-%d', $topic, getmypid(), time())],
-            null === $groupOption => ['consumer.ephemeral', sprintf('ephemeral-%s-%d-%d', $topic, getmypid(), time())],
-            $staticMembership => ['consumer.at-least-once', $groupOption],
-            default => ['consumer.dynamic', $groupOption],
-        };
+        // The lane names the KafkaProfile (the librdkafka config). The only runtime
+        // override is the default lane's auto-commit interval — every other config
+        // difference (commit mode, rebalancing, static membership) is in the profile.
+        $overrides = ConsumerProfile::DefaultLane === $lane
+            ? [
+                'auto.commit.interval.ms' => (string) $autoCommitMs,
+            ]
+            : [];
 
         $output->writeln(sprintf(
-            '<comment>topic=%s group=%s profile=%s from=%s commit=%s timeout=%s</comment>',
+            '<comment>topic=%s group=%s profile=%s from=%s idempotent=%s timeout=%s</comment>',
             $topic,
             $group,
-            $profile,
+            $lane->profileName(),
             $offsetReset->value,
-            $strategy->value,
+            $idempotent ? 'yes' : 'no',
             $stopOnIdle ? $timeoutMs . 'ms (stop on idle)' : '∞ (tail)',
         ));
 
@@ -123,28 +128,28 @@ final class ConsumeCommand extends Command
             new ErrorCallback($narrate),
         );
 
-        $consumer = $this->consumers->create($profile, $group, $callbacks, $strategy->confOverrides($autoCommitMs));
+        $consumer = $this->consumers->create($lane->profileName(), $group, $callbacks, $overrides);
 
         $tally = [
             'handled' => 0,
             'skipped' => 0,
         ];
 
-        $messageHandler = $strategy->isReadOnly()
+        $messageHandler = $lane->inspectsOnly()
             ? $this->readOnlyHandler($output, $tally)
-            : $this->dispatchingHandler($strategy, $output, $tally);
+            : $this->dispatchingHandler($idempotent, $output, $tally);
 
         $consumer->run(
             [$topic],
             $messageHandler,
             new RunLimits(maxMessages: $max, pollTimeoutMs: $pollTimeoutMs, stopOnIdle: $stopOnIdle),
-            $strategy->commitPolicy(),
+            $lane->commitPolicy($idempotent),
             $narrate,
             $pauseMs,
         );
 
         $output->writeln('');
-        $output->writeln($strategy->isReadOnly()
+        $output->writeln($lane->inspectsOnly()
             ? sprintf('<info>done</info> — inspected %d message(s)', $tally['handled'])
             : sprintf('<info>done</info> — handled %d, skipped %d', $tally['handled'], $tally['skipped']));
 
@@ -153,17 +158,19 @@ final class ConsumeCommand extends Command
 
     /**
      * The normal pipeline: interpret each record into a typed DTO and dispatch it
-     * through the bus (with the strategy's middleware) to the projection handler.
+     * through the bus to the projection handler. With $idempotent the dispatch is
+     * wrapped in the transaction + dedup middleware (effectively-once) — an
+     * orthogonal handler/DB concern, independent of the profile's Kafka config.
      *
      * @param array{handled: int, skipped: int} $tally
      *
      * @return \Closure(\RdKafka\Message): void
      */
-    private function dispatchingHandler(ConsumeStrategy $strategy, OutputInterface $output, array &$tally): \Closure
+    private function dispatchingHandler(bool $idempotent, OutputInterface $output, array &$tally): \Closure
     {
         $bus = new ConsumerBus(
             $this->handler,
-            $strategy->isTransactional() ? [$this->transaction, $this->idempotency] : [],
+            $idempotent ? [$this->transaction, $this->idempotency] : [],
         );
 
         return function (\RdKafka\Message $message) use ($bus, $output, &$tally): void {

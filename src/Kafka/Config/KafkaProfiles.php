@@ -57,30 +57,36 @@ final readonly class KafkaProfiles
                 ...$this->timeouts(),
             ]),
 
-            // Block 1/3: named group, explicit commit, static membership, and
-            // cooperative-sticky rebalancing — the production consumer baseline.
-            // group.instance.id gives each member a stable identity, so a restart
-            // rejoins its partitions WITHOUT a rebalance.
-            new KafkaProfile('consumer.at-least-once', ClientRole::Consumer, [
-                ...$this->offsets(),
+            // Throwaway inspector: reads the whole log from earliest and never
+            // commits, so nothing it does is durable. No group.instance.id (a
+            // throwaway group must not be fenced on re-run) and no assignment
+            // override (the lone member needs no rebalancing strategy). The command
+            // pairs this with a unique group id and a skip-only handler.
+            new KafkaProfile('consumer.ephemeral', ClientRole::Consumer, [
+                ...$this->offsetReset(),
+                ...$this->manualCommit(),
+            ]),
+
+            // The classic committing consumer: librdkafka background auto-commit and
+            // EAGER rebalancing (range,roundrobin) — every join/leave revokes the
+            // whole assignment, the stop-the-world behavior. No static membership.
+            // The deliberate contrast to consumer.modern.
+            new KafkaProfile('consumer.default', ClientRole::Consumer, [
+                ...$this->offsetReset(),
+                ...$this->autoCommit(),
+                ...$this->eagerAssignment(),
+            ]),
+
+            // The modern production consumer: explicit commit after each handler,
+            // cooperative-sticky (incremental) rebalancing so only moving partitions
+            // are revoked, plus static membership so a restart rejoins WITHOUT a
+            // rebalance. Delivery guarantees (at-least-once / effectively-once) are
+            // an orthogonal handler/DB concern, layered on with --idempotent.
+            new KafkaProfile('consumer.modern', ClientRole::Consumer, [
+                ...$this->offsetReset(),
+                ...$this->manualCommit(),
                 ...$this->cooperativeAssignment(),
                 ...$this->staticMembership(),
-            ]),
-
-            // Same committing consumer WITHOUT group.instance.id: dynamic
-            // membership, so every join/leave triggers a (cooperative) rebalance.
-            // The deliberate contrast to consumer.at-least-once — kafka:consume picks
-            // between the two to show how static membership changes rebalancing.
-            new KafkaProfile('consumer.dynamic', ClientRole::Consumer, [
-                ...$this->offsets(),
-                ...$this->cooperativeAssignment(),
-            ]),
-
-            // Block 1: throwaway group that reads the whole log from earliest.
-            // No group.instance.id — static membership would fence a re-run.
-            new KafkaProfile('consumer.ephemeral', ClientRole::Consumer, [
-                ...$this->offsets(),
-                ...$this->cooperativeAssignment(),
             ]),
         ];
     }
@@ -150,26 +156,74 @@ final readonly class KafkaProfiles
     }
 
     /**
-     * Start from the beginning with no committed offset, and commit explicitly
-     * after processing succeeds — the at-least-once pair.
+     * With no committed offset, start from the earliest record so an event-driven
+     * consumer processes the full backlog rather than only new events. Where a run
+     * starts *relative to a committed offset* is a separate, per-run concern (the
+     * --from seek), not a profile setting.
      *
      * @return list<KafkaSetting>
      */
-    private function offsets(): array
+    private function offsetReset(): array
     {
         return [
             new KafkaSetting('offset', 'auto.offset.reset', 'earliest', 'largest', 'With no committed offset, start from the beginning so event-driven consumers process the full backlog (not just new events).'),
+        ];
+    }
+
+    /**
+     * Commit explicitly from the run-loop AFTER the handler returns. The control the
+     * application keeps over when the offset advances is what makes at-least-once
+     * (and, with handler/DB dedup, effectively-once) possible.
+     *
+     * @return list<KafkaSetting>
+     */
+    private function manualCommit(): array
+    {
+        return [
             new KafkaSetting('offset', 'enable.auto.commit', 'false', 'true', 'The key one: commit explicitly with commit($msg) AFTER processing succeeds = at-least-once. Background auto-commit (the default) can commit a message before your handler finishes and lose it on a crash. (The Confluent "auto.commit + offset-store" pattern is not exposed by php-rdkafka\'s high-level KafkaConsumer; explicit commit is the equivalent here, and is exactly what enqueue does.)'),
         ];
     }
 
     /**
+     * Let librdkafka commit offsets on a background timer (the default). Lowest
+     * overhead, but a commit can land before the handler finishes — at-most-once
+     * under failure. The interval is left at the default and tuned per run via
+     * --auto-commit-interval.
+     *
+     * @return list<KafkaSetting>
+     */
+    private function autoCommit(): array
+    {
+        return [
+            new KafkaSetting('offset', 'enable.auto.commit', 'true', 'true', 'Background auto-commit on a timer. Lowest overhead, but the offset can advance before the handler finishes, so a crash loses the in-flight message — at-most-once.'),
+        ];
+    }
+
+    /**
+     * Cooperative-sticky (incremental) rebalancing: only the partitions that move
+     * are revoked, the rest keep processing.
+     *
      * @return list<KafkaSetting>
      */
     private function cooperativeAssignment(): array
     {
         return [
             new KafkaSetting('assignment', 'partition.assignment.strategy', 'cooperative-sticky', 'range,roundrobin', 'Incremental rebalancing: only moving partitions are revoked, the rest keep processing. Kills the stop-the-world rebalance storm during rolling deploys.'),
+        ];
+    }
+
+    /**
+     * Eager rebalancing (range,roundrobin) — librdkafka's own default, stated
+     * explicitly so the eager-vs-cooperative contrast is visible in the profile.
+     * Every join/leave revokes the whole assignment before reassigning it: the
+     * stop-the-world rebalance.
+     *
+     * @return list<KafkaSetting>
+     */
+    private function eagerAssignment(): array
+    {
+        return [
+            new KafkaSetting('assignment', 'partition.assignment.strategy', 'range,roundrobin', 'range,roundrobin', 'Eager rebalancing: every join/leave revokes the entire assignment, then reassigns — the stop-the-world pause that cooperative-sticky avoids.'),
         ];
     }
 

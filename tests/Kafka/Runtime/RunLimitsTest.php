@@ -51,10 +51,11 @@ final class RunLimitsTest extends TestCase
         self::assertSame(5000, $limits->pollTimeoutMs);
     }
 
-    public function testCommitPolicyHasTheTwoExpectedCases(): void
+    public function testCommitPolicyHasTheThreeExpectedCases(): void
     {
-        self::assertCount(2, CommitPolicy::cases());
+        self::assertCount(3, CommitPolicy::cases());
         self::assertContains(CommitPolicy::AfterEachMessage, CommitPolicy::cases());
+        self::assertContains(CommitPolicy::AsyncAfterEachMessage, CommitPolicy::cases());
         self::assertContains(CommitPolicy::None, CommitPolicy::cases());
     }
 }

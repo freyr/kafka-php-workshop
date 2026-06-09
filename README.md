@@ -51,31 +51,43 @@ bus middleware *outside* the handler (a simplified command-bus shape).
 
 ```sh
 bin/console kafka:consume:setup                                    # provision orders + processed_events (idempotent)
-bin/console kafka:consume <topic> [-g GROUP] [--from WHERE] [--commit MODE] \
-    [--interval MS] [--auto-commit-interval MS] [--static-membership] [-m MAX] [-t TIMEOUT_MS]
+bin/console kafka:consume <topic> [--profile NAME] [-g GROUP] [--from WHERE] [--idempotent] \
+    [--interval MS] [--auto-commit-interval MS] [-m MAX] [-t TIMEOUT_MS]
 ```
+
+`--profile` selects the consumer's Kafka configuration. It bundles the commit mode
+and the rebalancing strategy — the two move together, so one name picks both:
+
+| `--profile` | commit | rebalancing | membership | handles? |
+|---|---|---|---|---|
+| `ephemeral` (default) | never | — (lone member) | throwaway group | no — inspects only, prints each record's name/id from the headers, no decode |
+| `default` | librdkafka background auto-commit (`--auto-commit-interval` ms) | eager `range,roundrobin` (stop-the-world) | dynamic | yes |
+| `modern` | explicit, after each handler | cooperative-sticky (incremental) | static (`group.instance.id`) | yes |
 
 `--from` sets where a run starts, independent of the committed offset: `beginning`
 (replay the whole log), `committed` (resume — the default), or `end` (only new
-records). `--commit` selects the delivery mode:
+records). `ephemeral` ignores `--from` and always reads from the beginning.
 
-| `--commit` | behavior |
-|---|---|
-| `per-message` | commit after each handled message — at-least-once (default) |
-| `auto` | librdkafka commits in the background every `--auto-commit-interval` ms |
-| `idempotent` | dedup on `event_id` + the `orders` upsert in one DB transaction, commit after — effectively-once |
-| `readonly` | a throwaway group that never commits and never reaches the handler; prints each record's name/id from the headers, no decode |
+`--idempotent` is **orthogonal** to the profile: it records each `event_id` in
+`processed_events` in the same DB transaction as the `orders` upsert, so a
+redelivered event is a no-op — effectively-once. It is a handler/DB concern, not a
+Kafka setting, so it layers onto `default` or `modern` (and is ignored by
+`ephemeral`, which never reaches the handler).
+
+Because dedup makes redelivery harmless, `modern --idempotent` also commits
+**asynchronously** in the poll loop (no per-message broker round-trip) and does a
+single **synchronous** commit on close to make the final offset durable — markedly
+faster than the synchronous per-message commit `modern` uses on its own. It stays
+at-least-once: a crash can lose an in-flight async commit and redeliver, but the
+dedup turns that into a no-op. (The close-time commit targets the last *handled*
+message, so a message whose handler threw is never committed and is reprocessed.)
 
 `order.created/updated/cancelled` share the `enet.ecommerce.orders` topic, keyed by
-order id. `--commit idempotent` records each `event_id` in `processed_events` in the
-same transaction as the `orders` upsert, so a redelivered event is a no-op. A named
-`-g` group keeps committed offsets across runs; omit `-g` for a throwaway group from
-earliest. A named group selects one of two profiles to demonstrate rebalancing:
-`consumer.dynamic` by default (dynamic membership — every join/leave triggers a
-cooperative rebalance), or `consumer.at-least-once` with `--static-membership` (adds
-`group.instance.id`, so a restart rejoins without a rebalance). Leave static off for
-short CLI runs, where a dead static member would stall reassignment until
-`session.timeout.ms` elapses. Both profiles are visible in `kafka:config:show`.
+order id. The `default`-vs-`modern` pair is the rebalancing contrast: eager revokes
+the whole assignment on every join/leave, cooperative-sticky moves only the affected
+partitions and a static member rejoins without a rebalance at all. A named `-g` group
+keeps committed offsets across runs (default/modern); `ephemeral` always joins a
+fresh throwaway group, so omit `-g` there.
 
 **Schema evolution** (Block 4) — flow is **check → register → produce** (schemas are
 **not** auto-registered on produce):

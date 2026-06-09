@@ -44,7 +44,7 @@ final class ConfBuilderTest extends TestCase
     public function testRuntimeOverridesWinOverProfileAndDefaults(): void
     {
         $conf = $this->builder()->build(
-            $this->profiles->get('consumer.at-least-once'),
+            $this->profiles->get('consumer.modern'),
             [
                 'group.id' => 'orders-worker',
                 'client.id' => 'custom-id',
@@ -57,8 +57,8 @@ final class ConfBuilderTest extends TestCase
 
     public function testGethostnamePlaceholderIsResolved(): void
     {
-        // consumer.at-least-once carries group.instance.id = gethostname().
-        $conf = $this->builder()->build($this->profiles->get('consumer.at-least-once'))->dump();
+        // consumer.modern carries group.instance.id = gethostname().
+        $conf = $this->builder()->build($this->profiles->get('consumer.modern'))->dump();
 
         self::assertArrayHasKey('group.instance.id', $conf);
         self::assertNotSame('', $conf['group.instance.id']);
@@ -71,6 +71,15 @@ final class ConfBuilderTest extends TestCase
 
         // librdkafka reports an unset group.instance.id as empty string.
         self::assertSame('', $conf['group.instance.id'] ?? '');
+        // Ephemeral sets no assignment strategy, so dump() shows librdkafka's own
+        // default — the eager range,roundrobin, not cooperative-sticky.
+        self::assertSame('range,roundrobin', $conf['partition.assignment.strategy']);
+    }
+
+    public function testModernProfileUsesCooperativeStickyRebalancing(): void
+    {
+        $conf = $this->builder()->build($this->profiles->get('consumer.modern'))->dump();
+
         // cooperative-sticky is a global property, so it is observable in dump().
         self::assertSame('cooperative-sticky', $conf['partition.assignment.strategy']);
     }
