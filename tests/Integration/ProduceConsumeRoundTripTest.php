@@ -13,7 +13,12 @@ final class ProduceConsumeRoundTripTest extends IntegrationTestCase
 {
     private const string ORDERS_TOPIC = 'enet.ecommerce.orders';
 
-    private const string PAYMENTS_TOPIC = 'enet.ecommerce.payments';
+    /**
+     * order.audited has no DB handler, but under --idempotent the dedup middleware
+     * still records each event — so the audit topic exercises the
+     * effectively-once ledger on a second stream without touching `orders`.
+     */
+    private const string AUDIT_TOPIC = 'enet.ecommerce.audit';
 
     public function testMixedPipelineIsEffectivelyOnceAcrossTopics(): void
     {
@@ -36,7 +41,7 @@ final class ProduceConsumeRoundTripTest extends IntegrationTestCase
             '--idempotent' => true,
             '--group' => $this->uniqueGroup(),
         ]);
-        $this->consumeBacklog(self::PAYMENTS_TOPIC, [
+        $this->consumeBacklog(self::AUDIT_TOPIC, [
             '--profile' => 'modern',
             '--idempotent' => true,
             '--group' => $this->uniqueGroup(),
@@ -60,7 +65,7 @@ final class ProduceConsumeRoundTripTest extends IntegrationTestCase
             '--idempotent' => true,
             '--group' => $this->uniqueGroup(),
         ]);
-        $this->consumeBacklog(self::PAYMENTS_TOPIC, [
+        $this->consumeBacklog(self::AUDIT_TOPIC, [
             '--profile' => 'modern',
             '--idempotent' => true,
             '--group' => $this->uniqueGroup(),

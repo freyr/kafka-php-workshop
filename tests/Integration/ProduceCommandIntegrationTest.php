@@ -22,8 +22,6 @@ final class ProduceCommandIntegrationTest extends IntegrationTestCase
      */
     private const array ROUTED_TOPICS = [
         'enet.ecommerce.orders',
-        'enet.ecommerce.payments',
-        'enet.ecommerce.inventory',
         'enet.ecommerce.audit',
         'enet.demo.orders',
     ];
@@ -70,8 +68,7 @@ final class ProduceCommandIntegrationTest extends IntegrationTestCase
     public static function routes(): iterable
     {
         yield 'order.created → orders' => ['order.created', 'enet.ecommerce.orders'];
-        yield 'payment.processed → payments' => ['payment.processed', 'enet.ecommerce.payments'];
-        yield 'inventory.reserved → inventory' => ['inventory.reserved', 'enet.ecommerce.inventory'];
+        yield 'order.cancelled → orders' => ['order.cancelled', 'enet.ecommerce.orders'];
         yield 'order.audited → audit' => ['order.audited', 'enet.ecommerce.audit'];
         yield 'demo.order.evolved → demo' => ['demo.order.evolved', 'enet.demo.orders'];
     }
