@@ -32,8 +32,6 @@ final class MessageCatalog
             'order.updated',
             'order.cancelled',
             'order.audited',
-            'payment.processed',
-            'inventory.reserved',
             'demo.order.evolved',
         ];
     }
@@ -55,8 +53,6 @@ final class MessageCatalog
             'order.updated' => OrderUpdated::create($orderId),
             'order.cancelled' => OrderCancelled::create($orderId),
             'order.audited' => OrderAudited::create($orderId),
-            'payment.processed' => PaymentProcessed::create($orderId),
-            'inventory.reserved' => InventoryReserved::create($orderId),
             'demo.order.evolved' => OrderEvolved::create($orderId),
             default => throw new \InvalidArgumentException(sprintf("No AVRO message named '%s'. Available: %s", $name, implode(', ', $this->names()))),
         };

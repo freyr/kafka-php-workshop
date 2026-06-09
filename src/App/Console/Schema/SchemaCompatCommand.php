@@ -37,7 +37,7 @@ final class SchemaCompatCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('type', InputArgument::REQUIRED, 'order.created | payment.processed | inventory.reserved')
+            ->addArgument('type', InputArgument::REQUIRED, implode(' | ', $this->routing->names()))
             ->addArgument('level', InputArgument::OPTIONAL, 'Set the subject to this level (' . implode(' | ', self::LEVELS) . '); omit to show the current level');
     }
 

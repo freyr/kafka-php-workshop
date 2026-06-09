@@ -18,8 +18,6 @@ WORKSHOP_TOPICS=(
   # Block 2 — eCommerce topic map. enet.ecommerce.* naming; partition counts
   # sized per stream. Reused by Blocks 3-5 (AVRO events) and Block 8 (ops).
   "enet.ecommerce.orders:6"            # key=orderId   — order lifecycle, ordered per order
-  "enet.ecommerce.payments:6"          # key=orderId   — correlate payments with their order
-  "enet.ecommerce.inventory:12"        # key=productId — sale-spike headroom
   "enet.ecommerce.audit:1"             # key=orderId   — single-partition audit log; consumer-group offsets demo (demo:offsets:*)
 
   # Block 4 — schema-evolution playground. A throwaway flat event (demo.order.evolved)

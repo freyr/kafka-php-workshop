@@ -29,7 +29,7 @@ final class SchemaCheckCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('type', InputArgument::REQUIRED, 'order.created | payment.processed | inventory.reserved')
+            ->addArgument('type', InputArgument::REQUIRED, implode(' | ', $this->routing->names()))
             ->addArgument('schema-file', InputArgument::REQUIRED, 'Path to the candidate .avsc to test (e.g. the edited schemas/orders/OrderCreated.avsc)');
     }
 
@@ -37,7 +37,7 @@ final class SchemaCheckCommand extends Command
     {
         $type = Input::string($input, 'type');
         if (! in_array($type, $this->routing->names(), true)) {
-            $output->writeln('<error>Unknown event type. Use: order.created | payment.processed | inventory.reserved</error>');
+            $output->writeln('<error>Unknown event type. Use one of: ' . implode(' | ', $this->routing->names()) . '</error>');
 
             return Command::INVALID;
         }
