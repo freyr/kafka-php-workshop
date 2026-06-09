@@ -11,7 +11,7 @@ namespace Workshop\App\Consumer;
  * field you evolved into the schema, and watch how writer vs. latest reader
  * schemas change whether old records can still hydrate this DTO.
  */
-final readonly class OrderEvolvedDto
+final readonly class OrderEvolvedDto implements OrderEvent
 {
     public function __construct(
         public string $orderId,

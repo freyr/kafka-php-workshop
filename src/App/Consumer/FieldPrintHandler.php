@@ -4,27 +4,28 @@ declare(strict_types=1);
 
 namespace Workshop\App\Consumer;
 
-use Symfony\Component\Console\Output\OutputInterface;
-
 /**
- * A consumer handler that prints a DTO's fields, one per line, instead of
- * projecting it. The Block 4 schema-evolution exercise uses it (via
- * `kafka:consume --print`) to make the consumer side legible: whatever fields the
- * read-model DTO declares show up, so adding a property to the DTO — or switching
- * the reader schema — visibly changes what the consumer sees.
+ * The MessageBus handler for the Block 4 schema-evolution event (OrderEvolvedDto):
+ * instead of projecting to the database it prints the DTO's fields, one per line,
+ * to make the consumer side legible. Whatever fields the read-model DTO declares
+ * show up, so adding a property to the DTO — or switching the reader schema —
+ * visibly changes what the consumer captured.
  *
- * It reflects the DTO's public properties, so it needs no per-type knowledge and
- * prints any DTO, including one you extend mid-exercise. Constructed per run with
- * the command's output (not a DI service — it has nowhere to write otherwise).
+ * It reflects the DTO's public properties, so it keeps working as you extend the
+ * DTO mid-exercise. It writes through ConsoleWriter (a bus handler is a DI service
+ * with no command output of its own); the command binds the real output at startup.
+ * Pair it with `kafka:consume --print`, which dumps the raw decoded record (the
+ * wire fields, pre-DTO) — together they show wire vs DTO side by side.
  */
-final readonly class FieldPrintHandler implements DtoHandler
+#[AsMessageHandler]
+final readonly class FieldPrintHandler
 {
     public function __construct(
-        private OutputInterface $output,
+        private ConsoleWriter $console,
     ) {
     }
 
-    public function handle(object $dto): void
+    public function __invoke(OrderEvolvedDto $dto): void
     {
         $fields = $this->fields($dto);
         $width = 0;
@@ -33,7 +34,7 @@ final readonly class FieldPrintHandler implements DtoHandler
         }
 
         foreach ($fields as $name => $value) {
-            $this->output->writeln(sprintf('      %s = <info>%s</info>', str_pad($name, $width), $value));
+            $this->console->writeln(sprintf('      %s = <info>%s</info>', str_pad($name, $width), $value));
         }
     }
 

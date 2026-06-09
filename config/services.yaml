@@ -39,12 +39,15 @@ services:
     # a read-model DTO (the DtoRouting table is wired by WorkshopExtension).
     Workshop\App\Consumer\MessageDenormalizer: ~
 
-    # The consumer application: interpret a record into a typed DTO, then dispatch it
-    # to the generic projection handler. Each is autowired by type; the value objects
-    # (ConsumedMessage), the Middleware interface, and the ConsumerBus (assembled per
-    # commit strategy inside kafka:consume) are NOT services.
+    # The consumer application: decode a record, denormalize it into a typed DTO, then
+    # hand it to the MessageBus, which routes the DTO to its one #[AsMessageHandler]
+    # (MessageHandlerPass builds that routing table from the tagged handlers below).
+    # Each is autowired by type; the value objects (ConsumedMessage, DecodedRecord) and
+    # the Middleware interface are NOT services. MessageBus's handler locator argument
+    # is filled by the compiler pass, not autowiring.
     Workshop\App\Consumer\MessageInterpreter: ~
-    Workshop\App\Consumer\ProjectionHandler: ~
+    Workshop\App\Consumer\MessageBus: ~
+    Workshop\App\Consumer\ConsoleWriter: ~
     Workshop\App\Consumer\EventDedup: ~
     # Maps a message name to its subject's latest registered schema (the reader
     # schema for kafka:consume --reader=latest). Autowires MessageRouting + the
@@ -52,6 +55,16 @@ services:
     Workshop\App\Consumer\LatestSchemaResolver: ~
     Workshop\App\Consumer\TransactionMiddleware: ~
     Workshop\App\Consumer\IdempotencyMiddleware: ~
+
+    # The per-DTO handlers the MessageBus routes to. Each declares #[AsMessageHandler];
+    # autoconfiguration tags it and MessageHandlerPass keys it by the DTO its __invoke
+    # accepts. FieldPrintHandler is OrderEvolvedDto's handler — it prints fields (the
+    # Block 4 schema-evolution view) instead of projecting. OrderAuditedDto has no
+    # handler on purpose (decode-and-flow, project nothing).
+    Workshop\App\Consumer\OrderCreatedHandler: ~
+    Workshop\App\Consumer\OrderUpdatedHandler: ~
+    Workshop\App\Consumer\OrderCancelledHandler: ~
+    Workshop\App\Consumer\FieldPrintHandler: ~
 
     # The consumer's MySQL store. ConnectionFactory turns the DATABASE_URL parameter
     # into a DBAL Connection (the single construction seam); SchemaInstaller (autowired

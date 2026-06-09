@@ -9,7 +9,7 @@ namespace Workshop\App\Consumer;
  * Serializer ignores payload keys not declared here (items, shipping_address,
  * placed_at, notes), which is the point of a consumer-owned read model.
  */
-final readonly class OrderCreatedDto
+final readonly class OrderCreatedDto implements OrderEvent
 {
     public function __construct(
         public string $orderId,

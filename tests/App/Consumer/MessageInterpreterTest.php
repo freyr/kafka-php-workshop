@@ -50,6 +50,31 @@ final class MessageInterpreterTest extends TestCase
         self::assertSame(500, $consumed->dto->totals->total->amountCents);
     }
 
+    public function testDecodeExposesTheRawPayloadWithUnmappedFieldsAndStripsMetadata(): void
+    {
+        // An evolved record carries a wire field the OrderCreatedDto does not map.
+        $envelope = self::ENVELOPE + [
+            'loyalty_tier' => 'gold',
+        ];
+
+        $decoded = $this->interpreter($envelope)->decode(
+            $this->message([
+                'message-name' => 'order.created',
+                'event-id' => 'hdr-id',
+            ], partition: 1, offset: 3),
+        );
+
+        self::assertNotNull($decoded);
+        self::assertSame('order.created', $decoded->name);
+        self::assertSame('hdr-id', $decoded->eventId);
+        self::assertSame(OrderCreatedDto::class, $decoded->dtoClass);
+        self::assertSame(1, $decoded->partition);
+        self::assertSame(3, $decoded->offset);
+        self::assertArrayNotHasKey('metadata', $decoded->payload, 'the reserved envelope is stripped from the raw payload');
+        self::assertSame('gold', $decoded->payload['loyalty_tier'] ?? null, 'an unmapped wire field survives the decode');
+        self::assertSame('ord-1', $decoded->payload['order_id'] ?? null);
+    }
+
     public function testFallsBackToTheEnvelopeEventIdWhenTheHeaderIsAbsent(): void
     {
         $consumed = $this->interpreter(self::ENVELOPE)->interpret(

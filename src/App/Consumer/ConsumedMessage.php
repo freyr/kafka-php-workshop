@@ -6,7 +6,7 @@ namespace Workshop\App\Consumer;
 
 /**
  * One consumed record after interpretation: the typed read-model DTO plus the
- * envelope identity the middleware needs. This is the message the ConsumerBus
+ * envelope identity the middleware needs. This is the message the MessageBus
  * dispatches — middleware reads the metadata (event_id for dedup), the handler
  * reads only the dto, so idempotency stays a concern outside the handler.
  */

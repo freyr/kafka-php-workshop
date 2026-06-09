@@ -109,7 +109,7 @@ bin/console kafka:schema:register --all                  # bootstrap every route
 bin/console kafka:schema:versions <type>                 # registered version lineage
 bin/console kafka:schema:compat   <type> [level]         # show or set the subject's compatibility level
 bin/console kafka:schema:delete   <type> [version]       # delete a registered version (default latest)
-bin/console kafka:consume <topic> --print [--reader writer|latest]   # print each record's DTO fields
+bin/console kafka:consume <topic> --print [--reader writer|latest]   # also dump each record's RAW decoded fields (pre-DTO)
 ```
 
 The exercise has each participant evolve a **dedicated throwaway event** —
@@ -124,12 +124,15 @@ the registry does and does not protect. Schemas are **not** shipped pre-evolved:
    default, so those records carry placeholder data the registry was perfectly happy
    with. The drift only surfaces downstream — the prod failure mode.
 2. **A reader schema is what unifies a mixed-version stream.** Once old and new records
-   coexist, add the field to the read-model DTO and consume:
-   `kafka:consume enet.demo.orders --print --reader writer` *skips* the old records (the
-   DTO can't be built — the field isn't on the wire), while `--reader latest` resolves
-   every record against the latest schema, filling the default into the old ones so they
-   all hydrate. The reader schema, not the writer, is what lets one consumer read a
-   mixed-version log as a single shape.
+   coexist, add the field to the read-model DTO and consume. The evolved event's handler
+   prints the *DTO* fields (whatever the read model captured); adding `--print` also dumps
+   the *raw decoded record* (the wire fields, before the DTO) — so you see wire vs DTO side
+   by side. With `--reader writer`, `kafka:consume enet.demo.orders --print --reader writer`
+   shows each old record's raw fields and then *skips* it (the DTO can't be built — the
+   field isn't on the wire), while `--reader latest` resolves every record against the
+   latest schema, filling the default into the old ones so they all hydrate. The reader
+   schema, not the writer, is what lets one consumer read a mixed-version log as a single
+   shape.
 3. **Expand-contract can't retire a field on a log.** Drop the default and re-register:
    it **passes** under the default non-transitive `BACKWARD` (the registry only compares
    to the latest version, which still has the field) but is **rejected** under

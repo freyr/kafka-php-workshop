@@ -10,19 +10,13 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Workshop\App\Consumer\ConsoleWriter;
 use Workshop\App\Consumer\ConsumedMessage;
-use Workshop\App\Consumer\ConsumerBus;
-use Workshop\App\Consumer\FieldPrintHandler;
-use Workshop\App\Consumer\IdempotencyMiddleware;
+use Workshop\App\Consumer\DecodedRecord;
 use Workshop\App\Consumer\LatestSchemaResolver;
+use Workshop\App\Consumer\MessageBus;
 use Workshop\App\Consumer\MessageInterpreter;
-use Workshop\App\Consumer\OrderAuditedDto;
-use Workshop\App\Consumer\OrderCancelledDto;
-use Workshop\App\Consumer\OrderCreatedDto;
-use Workshop\App\Consumer\OrderEvolvedDto;
-use Workshop\App\Consumer\OrderUpdatedDto;
-use Workshop\App\Consumer\ProjectionHandler;
-use Workshop\App\Consumer\TransactionMiddleware;
+use Workshop\App\Consumer\OrderEvent;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\ConsumerProfile;
 use Workshop\Kafka\Runtime\OffsetReset;
@@ -37,9 +31,8 @@ final class ConsumeCommand extends Command
     public function __construct(
         private readonly ConsumerFactory $consumers,
         private readonly MessageInterpreter $interpreter,
-        private readonly ProjectionHandler $handler,
-        private readonly TransactionMiddleware $transaction,
-        private readonly IdempotencyMiddleware $idempotency,
+        private readonly MessageBus $bus,
+        private readonly ConsoleWriter $console,
         private readonly LatestSchemaResolver $readers,
     ) {
         parent::__construct();
@@ -63,6 +56,10 @@ final class ConsumeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Hand the run's output to the console sink so bus handlers that print
+        // (FieldPrintHandler, the demo event's handler) have somewhere to write.
+        $this->console->bind($output);
+
         try {
             $offsetReset = OffsetReset::fromOption(Input::string($input, 'from'));
             $lane = ConsumerProfile::fromOption(Input::string($input, 'profile'));
@@ -160,13 +157,14 @@ final class ConsumeCommand extends Command
     }
 
     /**
-     * The normal pipeline: interpret each record into a typed DTO and dispatch it
-     * through the bus to a handler. By default that handler is the projection
-     * (wrapped in transaction + dedup middleware when $idempotent); with $print it
-     * is the field printer instead — no DB, no middleware, just the DTO's fields,
-     * which is the Block 4 schema-evolution view. $latestReader resolves each
-     * record against its subject's latest schema before decoding (vs its own
-     * writer schema), so the two can be compared on the same log.
+     * The normal pipeline: decode each record, then denormalize it into a typed DTO
+     * and dispatch it through the MessageBus, which routes the DTO to its one
+     * registered handler (wrapped in transaction + dedup middleware when
+     * $idempotent). $print is an orthogonal lens: it dumps the raw decoded record
+     * (the wire fields, before the DTO) for every record — independent of which
+     * handler runs, and visible even when the record then fails to hydrate its DTO.
+     * $latestReader resolves each record against its subject's latest schema before
+     * decoding (vs its own writer schema), so the two can be compared on one log.
      *
      * @param array{handled: int, skipped: int} $tally
      *
@@ -174,11 +172,7 @@ final class ConsumeCommand extends Command
      */
     private function dispatchingHandler(bool $idempotent, bool $latestReader, bool $print, OutputInterface $output, array &$tally): \Closure
     {
-        $handler = $print ? new FieldPrintHandler($output) : $this->handler;
-        $middleware = (! $print && $idempotent) ? [$this->transaction, $this->idempotency] : [];
-        $bus = new ConsumerBus($handler, $middleware);
-
-        return function (\RdKafka\Message $message) use ($bus, $latestReader, $print, $output, &$tally): void {
+        return function (\RdKafka\Message $message) use ($idempotent, $latestReader, $print, $output, &$tally): void {
             // --reader=latest resolves this record's subject (via its message-name)
             // to the latest registered schema and decodes against it; otherwise the
             // interpreter decodes the record in its own writer shape.
@@ -186,13 +180,31 @@ final class ConsumeCommand extends Command
                 ? $this->readers->forMessageName($name)
                 : null;
 
-            $consumed = $this->interpreter->interpret($message, $reader);
+            $decoded = $this->interpreter->decode($message, $reader);
+            if (null === $decoded) {
+                if ($print) {
+                    $output->writeln(sprintf(
+                        '  <comment>•</comment> %s offset=%d — <error>skipped: not a record this consumer decodes</error>',
+                        '' !== ($n = $this->header($message, 'message-name')) ? $n : '<none>',
+                        $message->offset,
+                    ));
+                }
+                ++$tally['skipped'];
+
+                return;
+            }
+
+            // --print: show the raw decoded record (wire fields, incl. any the DTO
+            // does not map) before it is shaped into the DTO.
+            if ($print) {
+                $this->printRaw($output, $decoded, $latestReader);
+            }
+
+            $consumed = $this->interpreter->denormalize($decoded);
             if (null === $consumed) {
                 if ($print) {
                     $output->writeln(sprintf(
-                        '  <comment>•</comment> %s offset=%d — <error>skipped: could not read this record into the DTO under reader=%s</error>',
-                        '' !== ($n = $this->header($message, 'message-name')) ? $n : '<none>',
-                        $message->offset,
+                        '      <error>skipped: could not read this record into the DTO under reader=%s</error>',
                         $latestReader ? 'latest' : 'writer',
                     ));
                 }
@@ -201,15 +213,30 @@ final class ConsumeCommand extends Command
                 return;
             }
 
-            if ($print) {
-                $output->writeln(sprintf('  <info>•</info> %s offset=%d', $consumed->name, $consumed->offset));
-            }
-            $bus->dispatch($consumed);
+            $this->bus->dispatch($consumed, $idempotent);
             ++$tally['handled'];
-            if (! $print) {
-                $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
-            }
+            $output->writeln(sprintf('  <info>✓</info> %s', $this->describe($consumed)));
         };
+    }
+
+    /**
+     * Dump a decoded record's raw business fields (metadata stripped) as indented
+     * JSON — the pre-DTO wire view that makes unmapped fields and schema drift
+     * visible. Independent of the handler the DTO eventually routes to.
+     */
+    private function printRaw(OutputInterface $output, DecodedRecord $decoded, bool $latestReader): void
+    {
+        $output->writeln(sprintf(
+            '  <info>•</info> %s offset=%d — raw decoded record (reader=%s):',
+            $decoded->name,
+            $decoded->offset,
+            $latestReader ? 'latest' : 'writer',
+        ));
+
+        $json = json_encode($decoded->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        foreach (explode("\n", false !== $json ? $json : '{}') as $line) {
+            $output->writeln('      <comment>' . $line . '</comment>');
+        }
     }
 
     /**
@@ -247,14 +274,7 @@ final class ConsumeCommand extends Command
      */
     private function describe(ConsumedMessage $message): string
     {
-        $orderId = match (true) {
-            $message->dto instanceof OrderCreatedDto,
-            $message->dto instanceof OrderUpdatedDto,
-            $message->dto instanceof OrderCancelledDto,
-            $message->dto instanceof OrderEvolvedDto,
-            $message->dto instanceof OrderAuditedDto => $message->dto->orderId,
-            default => '?',
-        };
+        $orderId = $message->dto instanceof OrderEvent ? $message->dto->orderId : '?';
 
         return sprintf('%s order=%s', $message->name, $orderId);
     }

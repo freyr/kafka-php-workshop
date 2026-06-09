@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Workshop\Framework;
 
 use Symfony\Component\Config\FileLocator;
+use Symfony\Component\DependencyInjection\ChildDefinition;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
+use Workshop\App\Consumer\AsMessageHandler;
+use Workshop\Framework\DependencyInjection\MessageHandlerPass;
 use Workshop\Framework\DependencyInjection\WorkshopExtension;
 
 /**
@@ -47,6 +51,19 @@ final readonly class Kernel
         // Registering the extension makes `workshop:` a valid top-level key in the
         // YAML; the loader hands those configs to WorkshopExtension at compile time.
         $container->registerExtension(new WorkshopExtension());
+
+        // Consumer handlers declare #[AsMessageHandler]; autoconfiguration turns that
+        // attribute into the tag MessageHandlerPass collects, so a handler never names
+        // the tag itself. The pass then reflects each handler's __invoke to build the
+        // MessageBus routing table — run after the built-in instanceof/attribute
+        // resolution (negative priority) so the tags are already in place.
+        $container->registerAttributeForAutoconfiguration(
+            AsMessageHandler::class,
+            static function (ChildDefinition $definition, AsMessageHandler $attribute, \Reflector $reflector): void {
+                $definition->addTag(MessageHandlerPass::TAG);
+            },
+        );
+        $container->addCompilerPass(new MessageHandlerPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -16);
 
         new YamlFileLoader(
             $container,

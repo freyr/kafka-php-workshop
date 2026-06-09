@@ -8,14 +8,16 @@ use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Workshop\App\Console\ConsumeCommand;
+use Workshop\App\Consumer\ConsoleWriter;
 use Workshop\App\Consumer\DtoRouting;
 use Workshop\App\Consumer\EventDedup;
 use Workshop\App\Consumer\IdempotencyMiddleware;
 use Workshop\App\Consumer\LatestSchemaResolver;
+use Workshop\App\Consumer\MessageBus;
 use Workshop\App\Consumer\MessageDenormalizer;
 use Workshop\App\Consumer\MessageInterpreter;
-use Workshop\App\Consumer\ProjectionHandler;
 use Workshop\App\Consumer\TransactionMiddleware;
 use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageRouting;
@@ -88,12 +90,19 @@ final class ConsumeCommandTest extends TestCase
         // so the connection is never used and configures no expectations.
         $connection = $this->createStub(Connection::class);
 
+        // The bus's handler locator is empty: validation returns INVALID before any
+        // record is dispatched, so no handler is ever resolved.
+        $bus = new MessageBus(
+            new ServiceLocator([]),
+            new TransactionMiddleware($connection),
+            new IdempotencyMiddleware(new EventDedup($connection)),
+        );
+
         $command = new ConsumeCommand(
             $consumers,
             new MessageInterpreter(new DtoRouting([]), $serializer, new MessageDenormalizer()),
-            new ProjectionHandler($connection),
-            new TransactionMiddleware($connection),
-            new IdempotencyMiddleware(new EventDedup($connection)),
+            $bus,
+            new ConsoleWriter(),
             new LatestSchemaResolver(new MessageRouting([]), new SchemaRegistryClient(new \GuzzleHttp\Client())),
         );
 
