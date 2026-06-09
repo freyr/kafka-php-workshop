@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deletes the Debezium outbox connector (Block 6). The MySQL replication slot and
-# the schema-history / output topics are left in place — drop the whole stack with
-# 'make destroy' to wipe everything.
+# Deletes the Debezium outbox connector (Block 6) and purges its framework-managed
+# source offsets, so nothing stale survives for the next register (offsets are
+# keyed by connector name in connect_offsets and outlive plain deletion). The
+# schema-history / output topics are left in place — drop the whole stack with
+# 'make destroy' to wipe everything. Safe to run when Connect is down or the
+# connector does not exist (used by make teardown / integration-reset).
 
 CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 NAME="${1:-outbox-connector}"
 
-curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}" && echo "deleted ${NAME}" || {
+if ! curl -fsS "${CONNECT_URL}/connectors/${NAME}" >/dev/null 2>&1; then
   echo "no connector '${NAME}' to delete (or Connect unreachable)." >&2
-}
+  exit 0
+fi
+
+# Offset purge requires the connector to be in STOPPED state; the transition is
+# asynchronous, so poll briefly. Best-effort throughout — register purges again.
+curl -fsS -X PUT "${CONNECT_URL}/connectors/${NAME}/stop" >/dev/null 2>&1 || true
+for _ in $(seq 1 10); do
+  state="$(curl -fsS "${CONNECT_URL}/connectors/${NAME}/status" 2>/dev/null \
+    | sed -n 's/.*"connector":{"state":"\([A-Z]*\)".*/\1/p')"
+  [ "$state" = "STOPPED" ] && break
+  sleep 1
+done
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}/offsets" >/dev/null 2>&1 || true
+
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}" && echo "deleted ${NAME} (offsets purged)"

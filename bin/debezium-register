@@ -4,8 +4,19 @@ set -euo pipefail
 # Registers the Debezium MySQL outbox connector (Block 6 — CDC relay). Waits for
 # the Kafka Connect REST API, pre-creates the routed + schema-history topics
 # (broker auto-create is off), then (re)creates the connector from
-# config/debezium-outbox-connector.json. Idempotent: drops any existing connector
-# of the same name first, so re-running picks up config edits cleanly.
+# config/debezium-outbox-connector.json.
+#
+# Always a CLEAN start, so re-running converges no matter what happened before:
+#
+#  - Kafka Connect keeps source offsets in connect_offsets KEYED BY CONNECTOR
+#    NAME, and they SURVIVE connector deletion. If schema-history.outbox was
+#    recreated in between (make teardown / make integration do exactly that), a
+#    plain re-register dies on startup with "The db history topic is missing".
+#    So the connector is created in STOPPED state (no task ever runs against
+#    stale offsets), its framework-managed offsets are purged, and only then is
+#    it resumed.
+#  - The script then waits for the TASK to report RUNNING: a connector can be
+#    RUNNING while its only task is FAILED, which is invisible unless asked.
 
 CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,15 +43,40 @@ done
 echo "dropping any existing '${NAME}' …"
 curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}" >/dev/null 2>&1 || true
 
-echo "registering connector '${NAME}' …"
-curl -fsS -X POST "${CONNECT_URL}/connectors" \
-  -H 'Content-Type: application/json' \
-  --data-binary "@${CONFIG}"
-echo
+# Create in STOPPED state (KIP-980): the config file's first line is the opening
+# brace, so initial_state is injected right after it.
+echo "creating '${NAME}' (stopped) …"
+{ echo '{'; echo '  "initial_state": "STOPPED",'; tail -n +2 "$CONFIG"; } \
+  | curl -fsS -X POST "${CONNECT_URL}/connectors" \
+      -H 'Content-Type: application/json' --data-binary @- >/dev/null
+
+echo "purging stale source offsets …"
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/${NAME}/offsets" >/dev/null
+
+echo "resuming '${NAME}' …"
+curl -fsS -X PUT "${CONNECT_URL}/connectors/${NAME}/resume"
+
+echo "waiting for the task to report RUNNING …"
+state=""
+for _ in $(seq 1 30); do
+  status="$(curl -fsS "${CONNECT_URL}/connectors/${NAME}/status" 2>/dev/null || true)"
+  state="$(printf '%s' "$status" | sed -n 's/.*"tasks":\[{[^}]*"state":"\([A-Z]*\)".*/\1/p')"
+  [ "$state" = "RUNNING" ] && break
+  [ "$state" = "FAILED" ] && break
+  sleep 2
+done
+
+if [ "$state" != "RUNNING" ]; then
+  echo
+  echo "✗ task is ${state:-not up} — full status:" >&2
+  curl -fsS "${CONNECT_URL}/connectors/${NAME}/status" >&2 || true
+  echo >&2
+  exit 1
+fi
 
 echo
-echo "registered. Check status with:  bin/debezium-status"
-echo "then place an order and watch CDC route it (the topic carries JSON, not AVRO):"
+echo "✓ registered, task RUNNING. Place an order and watch CDC route it"
+echo "(the topic carries JSON, not AVRO):"
 echo "  docker compose run --rm php bin/console outbox:place"
 echo "  make outbox-watch"
 echo

@@ -18,7 +18,8 @@ setup: ## create every workshop topic across all blocks (idempotent)
 	bin/kafka-setup
 	docker compose run --rm php php bin/console kafka:schema:register --all
 
-teardown: ## delete every workshop topic created by setup (idempotent)
+teardown: ## delete every workshop topic created by setup (idempotent; removes the Debezium connector first)
+	-@bin/debezium-delete
 	bin/kafka-teardown
 
 ##@ Consumer (orders projection)
@@ -50,6 +51,7 @@ integration-reset: ## wipe state: recreate every topic, drop + recreate the proj
 		echo "$$active"; \
 		exit 1; \
 	fi
+	-@bin/debezium-delete
 	bin/kafka-teardown
 	bin/kafka-setup
 	docker compose run --rm php php bin/console kafka:consume:setup --fresh
