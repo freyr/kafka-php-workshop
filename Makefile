@@ -22,14 +22,15 @@ teardown: ## delete every workshop topic created by setup (idempotent)
 	bin/kafka-teardown
 
 ##@ Consumer (orders projection)
-TOPIC  ?= enet.ecommerce.orders
-GROUP  ?= demo
-FROM   ?= committed
-COMMIT ?= per-message
+TOPIC      ?= enet.ecommerce.orders
+GROUP      ?= demo
+FROM       ?= committed
+PROFILE    ?= modern
+IDEMPOTENT ?=
 consume-setup: ## provision the consumer store (orders + processed_events tables)
 	docker compose run --rm php bin/console kafka:consume:setup
-consume: ## consume into the projection; override TOPIC/GROUP/FROM/COMMIT (e.g. make consume COMMIT=idempotent FROM=beginning)
-	docker compose run --rm php bin/console kafka:consume $(TOPIC) -g $(GROUP) --from $(FROM) --commit $(COMMIT)
+consume: ## consume into the projection; override TOPIC/GROUP/FROM/PROFILE, set IDEMPOTENT=1 (e.g. make consume PROFILE=default FROM=beginning IDEMPOTENT=1)
+	docker compose run --rm php bin/console kafka:consume $(TOPIC) -g $(GROUP) --from $(FROM) --profile $(PROFILE) $(if $(IDEMPOTENT),--idempotent,)
 
 ##@ PHP container
 bash: ## interactive bash shell in an ephemeral php container
