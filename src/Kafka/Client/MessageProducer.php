@@ -54,23 +54,12 @@ final class MessageProducer
     {
         $route = $this->extractRouteFor($message);
 
-        if ($unkeyed) {
-            $this->unkeyed($route->topic, $message);
-        } else {
-            $this->keyed($route->topic, $message->partitionKey(), $message);
-        }
+        // Keyed by default (crc32(key) % n → per-aggregate ordering); $unkeyed drops
+        // the key so librdkafka scatters records across partitions for throughput.
+        $key = $unkeyed ? null : $message->partitionKey();
+        $this->send($route->topic, RD_KAFKA_PARTITION_UA, $message, $key);
 
         return new Produced($this->names->nameOf($message), $route);
-    }
-
-    private function keyed(string $topic, string $aggregateId, Message $message): void
-    {
-        $this->send($topic, RD_KAFKA_PARTITION_UA, $message, $aggregateId);
-    }
-
-    private function unkeyed(string $topic, Message $message): void
-    {
-        $this->send($topic, RD_KAFKA_PARTITION_UA, $message, null);
     }
 
     /**
