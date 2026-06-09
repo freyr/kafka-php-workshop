@@ -98,7 +98,7 @@ final class ConsumeCommand extends Command
         // The lane names the KafkaProfile (the librdkafka config). The only runtime
         // override is the default lane's auto-commit interval — every other config
         // difference (commit mode, rebalancing, static membership) is in the profile.
-        $overrides = ConsumerProfile::DefaultLane === $lane
+        $overrides = ConsumerProfile::Default === $lane
             ? [
                 'auto.commit.interval.ms' => (string) $autoCommitMs,
             ]

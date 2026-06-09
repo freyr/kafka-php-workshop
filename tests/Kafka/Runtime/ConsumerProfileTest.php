@@ -13,7 +13,7 @@ final class ConsumerProfileTest extends TestCase
     public function testFromOptionParsesEveryCase(): void
     {
         self::assertSame(ConsumerProfile::Ephemeral, ConsumerProfile::fromOption('ephemeral'));
-        self::assertSame(ConsumerProfile::DefaultLane, ConsumerProfile::fromOption('default'));
+        self::assertSame(ConsumerProfile::Default, ConsumerProfile::fromOption('default'));
         self::assertSame(ConsumerProfile::Modern, ConsumerProfile::fromOption('modern'));
     }
 
@@ -28,14 +28,14 @@ final class ConsumerProfileTest extends TestCase
     public function testEachLaneNamesItsKafkaProfile(): void
     {
         self::assertSame('consumer.ephemeral', ConsumerProfile::Ephemeral->profileName());
-        self::assertSame('consumer.default', ConsumerProfile::DefaultLane->profileName());
+        self::assertSame('consumer.default', ConsumerProfile::Default->profileName());
         self::assertSame('consumer.modern', ConsumerProfile::Modern->profileName());
     }
 
     public function testOnlyEphemeralInspectsOnly(): void
     {
         self::assertTrue(ConsumerProfile::Ephemeral->inspectsOnly());
-        self::assertFalse(ConsumerProfile::DefaultLane->inspectsOnly());
+        self::assertFalse(ConsumerProfile::Default->inspectsOnly());
         self::assertFalse(ConsumerProfile::Modern->inspectsOnly());
     }
 
@@ -44,7 +44,7 @@ final class ConsumerProfileTest extends TestCase
         self::assertSame(CommitPolicy::AfterEachMessage, ConsumerProfile::Modern->commitPolicy());
         // Default leaves committing to librdkafka's background auto-commit, and
         // ephemeral never commits — neither commits from the run-loop.
-        self::assertSame(CommitPolicy::None, ConsumerProfile::DefaultLane->commitPolicy());
+        self::assertSame(CommitPolicy::None, ConsumerProfile::Default->commitPolicy());
         self::assertSame(CommitPolicy::None, ConsumerProfile::Ephemeral->commitPolicy());
     }
 
@@ -55,7 +55,7 @@ final class ConsumerProfileTest extends TestCase
         self::assertSame(CommitPolicy::AsyncAfterEachMessage, ConsumerProfile::Modern->commitPolicy(true));
         // Dedup does not change the other lanes: default still auto-commits in the
         // background, ephemeral still never commits.
-        self::assertSame(CommitPolicy::None, ConsumerProfile::DefaultLane->commitPolicy(true));
+        self::assertSame(CommitPolicy::None, ConsumerProfile::Default->commitPolicy(true));
         self::assertSame(CommitPolicy::None, ConsumerProfile::Ephemeral->commitPolicy(true));
     }
 }

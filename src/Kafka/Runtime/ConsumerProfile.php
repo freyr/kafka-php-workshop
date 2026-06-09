@@ -13,7 +13,7 @@ namespace Workshop\Kafka\Runtime;
  *  - Ephemeral: throwaway inspector. consumer.ephemeral config (earliest, never
  *    commits, no static membership); the loop never commits and the command skips
  *    every record (prints name/id off the headers — no decode, no handler).
- *  - DefaultLane: consumer.default config (background auto-commit, eager
+ *  - Default: consumer.default config (background auto-commit, eager
  *    range,roundrobin rebalancing). The loop leaves committing to librdkafka.
  *  - Modern: consumer.modern config (cooperative-sticky + static membership). The
  *    loop commits explicitly after each handler.
@@ -24,7 +24,7 @@ namespace Workshop\Kafka\Runtime;
 enum ConsumerProfile: string
 {
     case Ephemeral = 'ephemeral';
-    case DefaultLane = 'default';
+    case Default = 'default';
     case Modern = 'modern';
 
     public static function fromOption(string $value): self
@@ -40,7 +40,7 @@ enum ConsumerProfile: string
     {
         return match ($this) {
             self::Ephemeral => 'consumer.ephemeral',
-            self::DefaultLane => 'consumer.default',
+            self::Default => 'consumer.default',
             self::Modern => 'consumer.modern',
         };
     }
@@ -68,7 +68,7 @@ enum ConsumerProfile: string
     {
         return match ($this) {
             self::Modern => $dedup ? CommitPolicy::AsyncAfterEachMessage : CommitPolicy::AfterEachMessage,
-            self::DefaultLane, self::Ephemeral => CommitPolicy::None,
+            self::Default, self::Ephemeral => CommitPolicy::None,
         };
     }
 }
