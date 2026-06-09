@@ -106,9 +106,15 @@ final class ConsumeCommand extends Command
             }
         : null;
 
-        // The factory assembles the consumer's callbacks (rebalance + error) so the
-        // rebalance protocol stays matched to the profile's assignment strategy.
-        $consumer = $this->consumers->create($lane->profileName(), $group, $offsetReset, $narrate);
+        // The commit policy is decided once and handed to both the factory (so it
+        // installs the offset-commit callback only when commits are async) and the
+        // run-loop (so it commits the matching way) — the two can never disagree.
+        $commitPolicy = $lane->commitPolicy($idempotent);
+
+        // The factory assembles the consumer's callbacks (rebalance + error, plus the
+        // offset-commit callback for the async policy) so the rebalance protocol stays
+        // matched to the profile's assignment strategy.
+        $consumer = $this->consumers->create($lane->profileName(), $group, $offsetReset, $narrate, commitPolicy: $commitPolicy);
 
         $tally = [
             'handled' => 0,
@@ -123,7 +129,7 @@ final class ConsumeCommand extends Command
             [$topic],
             $messageHandler,
             new RunLimits(maxMessages: $max, maxRuntimeMs: $ttlMs ?? 0, stopOnIdle: $drain),
-            $lane->commitPolicy($idempotent),
+            $commitPolicy,
             $narrate,
             $pauseMs,
         );

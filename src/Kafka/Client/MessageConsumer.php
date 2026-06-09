@@ -8,6 +8,7 @@ use RdKafka\Exception;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
 use Workshop\Kafka\Runtime\CommitPolicy;
+use Workshop\Kafka\Runtime\RebalanceCommitError;
 use Workshop\Kafka\Runtime\RunLimits;
 
 /**
@@ -166,20 +167,11 @@ final readonly class MessageConsumer
             $this->consumer->commit($message);
             $this->say($narrate, sprintf('✓ committed partition=%d offset=%d', $message->partition, $message->offset));
         } catch (Exception $e) {
-            if (! $this->isRebalanceCommitError($e)) {
+            if (! RebalanceCommitError::matches($e->getCode())) {
                 throw $e;
             }
             $this->say($narrate, sprintf('⚠ commit skipped — partition=%d reassigned mid-rebalance; offset %d will be redelivered', $message->partition, $message->offset));
         }
-    }
-
-    private function isRebalanceCommitError(Exception $e): bool
-    {
-        return in_array($e->getCode(), [
-            RD_KAFKA_RESP_ERR_ILLEGAL_GENERATION,
-            RD_KAFKA_RESP_ERR_REBALANCE_IN_PROGRESS,
-            RD_KAFKA_RESP_ERR_UNKNOWN_MEMBER_ID,
-        ], true);
     }
 
     private function say(?\Closure $narrate, string $line): void

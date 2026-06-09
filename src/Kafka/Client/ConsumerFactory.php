@@ -7,10 +7,12 @@ namespace Workshop\Kafka\Client;
 use RdKafka\KafkaConsumer;
 use Workshop\Kafka\Callback\CallbackKit;
 use Workshop\Kafka\Callback\ErrorCallback;
+use Workshop\Kafka\Callback\OffsetCommitCallback;
 use Workshop\Kafka\Callback\RebalanceCallback;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfile;
 use Workshop\Kafka\Config\KafkaProfiles;
+use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RebalanceProtocol;
 
@@ -45,6 +47,7 @@ final readonly class ConsumerFactory
         OffsetReset $offsetReset = OffsetReset::Committed,
         ?\Closure $narrate = null,
         array $overrides = [],
+        CommitPolicy $commitPolicy = CommitPolicy::None,
     ): MessageConsumer {
         $profile = $profile instanceof KafkaProfile ? $profile : $this->profiles->get($profile);
 
@@ -59,11 +62,23 @@ final readonly class ConsumerFactory
         $protocol = RebalanceProtocol::fromAssignmentStrategy(
             $profile->setting('partition.assignment.strategy'),
         );
-        $callbacks = new CallbackKit(
+        $callbacks = [
             new RebalanceCallback($narrate, $offsetReset, $protocol),
             new ErrorCallback($narrate),
-        );
-        $callbacks->attachTo($conf);
+        ];
+
+        // Only the async commit policy needs an offset-commit callback. A fire-and-
+        // forget commitAsync() has no caller to receive a rejection, so librdkafka
+        // logs a raw COMMITFAIL warning from its own thread for every commit a
+        // rebalance rejects; registering the callback both silences that line and
+        // narrates the benign rejection as a skip. The synchronous policies already
+        // get the result from commit() itself — registering the callback there would
+        // only double-report — so it is left off for them.
+        if (CommitPolicy::AsyncAfterEachMessage === $commitPolicy) {
+            $callbacks[] = new OffsetCommitCallback($narrate);
+        }
+
+        (new CallbackKit(...$callbacks))->attachTo($conf);
 
         return new MessageConsumer(new KafkaConsumer($conf));
     }
