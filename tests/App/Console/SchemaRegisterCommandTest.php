@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Tests\Console;
+namespace Workshop\Tests\App\Console;
 
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Console\Schema\SchemaRegisterCommand;
 use Workshop\App\Producer\MessageRouting;
-use Workshop\Console\Schema\SchemaRegisterCommand;
 use Workshop\Kafka\Serde\SchemaRegistryClient;
 
 /**

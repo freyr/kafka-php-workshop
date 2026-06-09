@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Console;
+namespace Workshop\App\Console;
 
 use Symfony\Component\Console\Input\InputInterface;
 

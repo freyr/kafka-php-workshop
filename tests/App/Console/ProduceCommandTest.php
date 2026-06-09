@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Tests\Console;
+namespace Workshop\Tests\App\Console;
 
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Console\ProduceCommand;
 use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageCatalog;
 use Workshop\App\Producer\MessageNameResolver;
 use Workshop\App\Producer\MessageRouting;
-use Workshop\Console\ProduceCommand;
 use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;

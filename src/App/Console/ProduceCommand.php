@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Console;
+namespace Workshop\App\Console;
 
 use FlixTech\SchemaRegistryApi\Exception\SchemaRegistryException;
 use Symfony\Component\Console\Attribute\AsCommand;

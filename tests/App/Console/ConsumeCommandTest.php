@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Workshop\Tests\Console;
+namespace Workshop\Tests\App\Console;
 
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Workshop\App\Console\ConsumeCommand;
 use Workshop\App\Consumer\DtoRouting;
 use Workshop\App\Consumer\EventDedup;
 use Workshop\App\Consumer\IdempotencyMiddleware;
@@ -16,7 +17,6 @@ use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\ProjectionHandler;
 use Workshop\App\Consumer\TransactionMiddleware;
 use Workshop\App\Producer\Message;
-use Workshop\Console\ConsumeCommand;
 use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
