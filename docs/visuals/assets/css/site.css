@@ -307,3 +307,21 @@ a { color: var(--accent); }
   border-color: var(--ok);
 }
 .lane--longlived.is-active { opacity: 1; box-shadow: 0 0 18px -8px var(--ok); }
+
+/* ---- Scenario panels (page 3: dim until the story enters them) ---- */
+.lane.scenario { opacity: .35; transition: opacity .25s, border-color .25s; }
+.lane.scenario.is-active { opacity: 1; border-color: var(--accent); border-style: solid; }
+
+/* ---- Outcome node variants (page 3: failed/reordered vs ordered) ---- */
+.node--bad.is-active {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  box-shadow: 0 0 0 1px var(--warn), 0 0 18px -6px var(--warn);
+  animation: none;
+}
+.node--ok.is-active {
+  border-color: var(--ok);
+  background: #142b18;
+  box-shadow: 0 0 0 1px var(--ok), 0 0 18px -6px var(--ok);
+  animation: none;
+}
