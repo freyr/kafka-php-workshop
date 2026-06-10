@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The consumer poll loop — where you commit decides the guarantee</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <a class="home-link" href="index.html">&larr; All visuals</a>
+    <h1>The consumer poll loop</h1>
+    <p class="subtitle">subscribe &rarr; consume &rarr; handle &rarr; commit &rarr; repeat &mdash; and how <em>where you commit</em> decides the delivery guarantee</p>
+  </header>
+
+  <div data-stepper>
+    <main class="stage">
+      <div class="diagram">
+        <!-- Partition log + meters -->
+        <section class="lane" data-stage="log">
+          <div class="lane__label">Kafka &mdash; partition log (offsets)</div>
+          <div class="log">
+            <span class="log__cell">40</span>
+            <span class="log__cell">41</span>
+            <span class="log__cell current">42</span>
+            <span class="log__cell">43</span>
+            <span class="log__cell">44</span>
+          </div>
+          <div class="meters">
+            <div class="meter"><span class="meter__label">committed offset</span><span class="meter__value" data-set="committed" data-default="41">41</span></div>
+            <div class="meter"><span class="meter__label">handler position</span><span class="meter__value" data-set="handled" data-default="&mdash;">&mdash;</span></div>
+            <div class="meter"><span class="meter__label">on crash</span><span class="meter__value" data-set="outcome" data-default="&mdash;">&mdash;</span></div>
+          </div>
+        </section>
+
+        <!-- The consume loop -->
+        <section class="lane" data-stage="loop-lane">
+          <div class="lane__label">the consume loop &mdash; subscribe once, then poll forever &#8635;</div>
+          <div class="lane__track">
+            <div class="node" data-stage="subscribe">subscribe($topic)<span class="slot" data-token-slot="slot-subscribe"></span></div>
+            <div class="node" data-stage="consume">consume(1000ms)<span class="slot" data-token-slot="slot-consume"></span></div>
+            <div class="node" data-stage="errswitch">switch ($msg-&gt;err)</div>
+            <div class="node" data-stage="handle">handle()<br>decode &middot; route &middot; apply<span class="slot" data-token-slot="slot-handle"></span></div>
+            <div class="node" data-stage="commit">commit($msg)<span class="slot" data-token-slot="slot-commit"></span></div>
+            <div class="node loop-back">&#8635; back to consume</div>
+          </div>
+        </section>
+
+        <!-- Scenario: at-most-once -->
+        <section class="lane scenario" data-stage="s-atmost">
+          <div class="lane__label">at-most-once &mdash; commit BEFORE handle</div>
+          <div class="lane__track">
+            <div class="node">commit offset 42</div>
+            <div class="node">&#128165; crash</div>
+            <div class="node node--bad" data-stage="s-atmost-out">message lost</div>
+          </div>
+        </section>
+
+        <!-- Scenario: at-least-once -->
+        <section class="lane scenario" data-stage="s-atleast">
+          <div class="lane__label">at-least-once &mdash; commit AFTER handle (the default)</div>
+          <div class="lane__track">
+            <div class="node">handle()</div>
+            <div class="node">&#128165; crash before commit</div>
+            <div class="node node--bad" data-stage="s-atleast-out">redelivered &mdash; duplicate side-effect</div>
+          </div>
+        </section>
+
+        <!-- Scenario: effectively-once -->
+        <section class="lane scenario" data-stage="s-eo">
+          <div class="lane__label">effectively-once &mdash; commit after handle + processed_events dedup</div>
+          <div class="lane__track">
+            <div class="node">handle()</div>
+            <div class="node">INSERT event_id<br>+ upsert (one tx)</div>
+            <div class="node">&#128165; crash &rarr; redeliver</div>
+            <div class="node node--ok" data-stage="s-eo-out">no-op &mdash; deduped</div>
+          </div>
+        </section>
+
+        <div class="token is-hidden" data-token>&#128230; offset 42</div>
+      </div>
+
+      <aside class="code-panel">
+        <pre><code><span class="code-line" data-code-line="1">$consumer-&gt;subscribe([$topic]);</span><span class="code-line" data-code-line="2">while ($running) {</span><span class="code-line" data-code-line="3">    $msg = $consumer-&gt;consume(1000);</span><span class="code-line" data-code-line="4">    switch ($msg-&gt;err) {</span><span class="code-line" data-code-line="5">      case NO_ERROR:</span><span class="code-line" data-code-line="6">        $handler($msg);   // decode+route+apply</span><span class="code-line" data-code-line="7">        $consumer-&gt;commit($msg); // AFTER handle</span><span class="code-line" data-code-line="8">        break;</span><span class="code-line" data-code-line="9">      case TIMED_OUT:</span><span class="code-line" data-code-line="10">      case PARTITION_EOF:</span><span class="code-line" data-code-line="11">        break; // normal — keep polling</span><span class="code-line" data-code-line="12">    }</span><span class="code-line" data-code-line="13">}</span><span class="code-line" data-code-line="14">$consumer-&gt;close(); // leave group now</span></code></pre>
+      </aside>
+    </main>
+
+    <section class="readout">
+      <p class="narration" data-narration></p>
+      <div class="callout is-hidden" data-callout></div>
+    </section>
+
+    <nav class="controls">
+      <button data-control="reset">&#9198; Reset</button>
+      <button data-control="prev">&larr; Prev</button>
+      <span class="counter" data-counter></span>
+      <button data-control="next">Next &rarr;</button>
+      <button data-control="autoplay">&#9654; Play</button>
+    </nav>
+  </div>
+
+  <script src="assets/js/stepper.js"></script>
+  <script>
+    var steps = [
+      {
+        stages: ['subscribe', 'log'],
+        token: 'slot-subscribe',
+        code: 1,
+        set: { committed: '41', handled: '—', outcome: '—' },
+        narration: 'subscribe() joins the consumer group and is handed a partition. From here the consumer just loops. close() leaves the group immediately, so the group rebalances now instead of waiting out session.timeout.ms.',
+        callout: { kind: 'note', text: 'On assignment librdkafka hands you partitions; the run-loop owns the rest — poll, handle, commit, repeat.' }
+      },
+      {
+        stages: ['consume', 'log'],
+        token: 'slot-consume',
+        code: 3,
+        set: { handled: '—' },
+        narration: 'consume(1000) blocks for up to a second and returns one record — here at offset 42 — or a timeout, or end-of-partition.',
+        callout: { kind: 'note', text: 'A poll returns a record, a timeout, or end-of-partition — all normal. You switch on $msg->err; they are not exceptions.' }
+      },
+      {
+        stages: ['handle'],
+        token: 'slot-handle',
+        code: 6,
+        set: { handled: '42' },
+        narration: 'handle() AVRO-decodes the record, routes it by its message-name header, and applies it to the projection. The side-effect happens now — before any commit.',
+        callout: { kind: 'note', text: 'Committed is still 41 while the handler runs at 42 — that gap is the at-least-once risk window.' }
+      },
+      {
+        stages: ['commit', 'log'],
+        token: 'slot-commit',
+        code: 7,
+        set: { committed: '42' },
+        narration: 'Only after the handler returns does commit() advance the committed offset to 42. This is CommitPolicy::AfterEachMessage — the safe, synchronous default.',
+        callout: { kind: 'note', text: 'Commit after success = at-least-once: a crash before this commit reprocesses the record, it never loses it.' }
+      },
+      {
+        stages: ['consume'],
+        token: 'slot-consume',
+        code: 2,
+        set: { handled: '—' },
+        narration: 'Back to consume(). Subscribe once, then poll forever; between turns the loop checks its stop conditions and reacts to Ctrl-C.',
+        callout: { kind: 'note', text: 'This poll-handle-commit rhythm is the whole consumer. Where the commit sits in it is the only knob that changes the guarantee.' }
+      },
+      {
+        stages: ['s-atmost', 's-atmost-out'],
+        token: null,
+        code: 7,
+        set: { outcome: 'message lost' },
+        narration: 'What if you commit BEFORE handling? Commit 42, then crash before the side-effect runs. The offset has already moved on, so the record is never reprocessed — it is lost.',
+        callout: { kind: 'warn', text: 'at-most-once: fastest, least safe. A crash between the commit and the side-effect drops the message.' }
+      },
+      {
+        stages: ['s-atleast', 's-atleast-out'],
+        token: null,
+        code: 7,
+        set: { outcome: 'redelivered' },
+        narration: 'Commit AFTER handling — the default. Crash before the commit and the offset never advanced, so the next run redelivers 42. The side-effect runs twice.',
+        callout: { kind: 'warn', text: 'at-least-once: never loses, but reprocesses on crash. Safe only if the side-effect tolerates a duplicate.' }
+      },
+      {
+        stages: ['s-eo', 's-eo-out'],
+        token: null,
+        code: 6,
+        set: { outcome: 'no-op (deduped)' },
+        narration: 'Record the event_id in a processed_events table in the SAME transaction as the upsert. On redelivery the insert collides and the whole unit is skipped — the duplicate becomes a no-op.',
+        callout: { kind: 'note', text: 'effectively-once: at-least-once delivery + an idempotent handler. This is the workshop’s --idempotent sweet spot.' }
+      }
+    ];
+
+    Stepper.init({ steps: steps, root: document.querySelector('[data-stepper]') });
+  </script>
+</body>
+</html>
