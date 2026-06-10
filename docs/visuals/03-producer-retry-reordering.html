@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>When retries reorder your records — idempotence vs max.in.flight=1</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <a class="home-link" href="index.html">&larr; All visuals</a>
+    <h1>When retries reorder your records</h1>
+    <p class="subtitle">two records, one transient error &mdash; and the partition log ends up backwards. why <code>enable.idempotence=true</code> (or <code>max.in.flight=1</code>) is the cure</p>
+  </header>
+
+  <div data-stepper>
+    <main class="stage">
+      <div class="diagram">
+        <!-- PHP userland: the two records -->
+        <section class="lane lane--php">
+          <div class="lane__label">PHP userland &mdash; two records, same key <code>order-7</code> &rarr; same partition</div>
+          <div class="lane__track">
+            <div class="node" data-stage="php-a">producev(A: created)<span class="slot" data-token-slot="slot-php-a"></span></div>
+            <div class="node" data-stage="php-b">producev(B: updated)<span class="slot" data-token-slot="slot-php-b"></span></div>
+            <div class="node node--queue" data-stage="lk-queue">librdkafka queue: [A][B]<span class="slot" data-token-slot="slot-queue"></span></div>
+          </div>
+        </section>
+
+        <!-- Scenario 1: untuned defaults -->
+        <section class="lane scenario" data-stage="sc-bad">
+          <div class="lane__label">producer.simple &mdash; librdkafka defaults: retries on, many requests in flight</div>
+          <div class="lane__track">
+            <div class="node" data-stage="bad-req-a">req 1: A &mdash; in flight</div>
+            <div class="node" data-stage="bad-req-b">req 2: B &mdash; in flight<br>(right behind it)</div>
+            <div class="node node--bad" data-stage="bad-fail">&#10006; req 1 fails<br>(transient: timeout)</div>
+            <div class="node" data-stage="bad-retry">&#8635; req 1 retried: A</div>
+          </div>
+          <div class="lane__track" style="margin-top: .8rem;">
+            <div class="node node--broker node--bad" data-stage="bad-log-b">broker log &middot; offset 41: <strong>B (updated)</strong><span class="slot" data-token-slot="slot-bad-log-b"></span></div>
+            <div class="node node--broker node--bad" data-stage="bad-log-a">offset 42: <strong>A (created)</strong><span class="slot" data-token-slot="slot-bad-log-a"></span></div>
+          </div>
+        </section>
+
+        <!-- Scenario 2: idempotent producer -->
+        <section class="lane scenario" data-stage="sc-good">
+          <div class="lane__label">fix 1 &middot; producer.idempotent &mdash; <code>enable.idempotence=true</code> (PID + sequence numbers)</div>
+          <div class="lane__track">
+            <div class="node" data-stage="good-req-a">req 1: A (seq 0)</div>
+            <div class="node" data-stage="good-req-b">req 2: B (seq 1)</div>
+            <div class="node node--bad" data-stage="good-fail">&#10006; req 1 fails</div>
+            <div class="node node--bad" data-stage="good-reject">broker: want seq 0, got 1<br>&rarr; reject B</div>
+            <div class="node" data-stage="good-resend">&#8635; resend in order: A, B</div>
+          </div>
+          <div class="lane__track" style="margin-top: .8rem;">
+            <div class="node node--broker node--ok" data-stage="good-log-a">offset 41: <strong>A (created)</strong><span class="slot" data-token-slot="slot-good-log-a"></span></div>
+            <div class="node node--broker node--ok" data-stage="good-log-b">offset 42: <strong>B (updated)</strong><span class="slot" data-token-slot="slot-good-log-b"></span></div>
+          </div>
+        </section>
+
+        <!-- Scenario 3: max.in.flight=1 -->
+        <section class="lane scenario" data-stage="sc-one">
+          <div class="lane__label">fix 2 &middot; <code>max.in.flight=1</code> &mdash; one request at a time (no pipelining)</div>
+          <div class="lane__track">
+            <div class="node" data-stage="one-a">send A &rarr; wait for ack &#10003;</div>
+            <div class="node" data-stage="one-b">only then: send B &rarr; ack &#10003;</div>
+            <div class="node node--ok" data-stage="one-log">log: A, B &mdash; ordered,<br>but every send is serialized</div>
+          </div>
+        </section>
+
+        <div class="token is-hidden" data-token>&#128230; record</div>
+      </div>
+
+      <aside class="code-panel">
+        <pre><code><span class="code-line" data-code-line="1">$topic-&gt;producev(&hellip;, $A, key: 'order-7');</span><span class="code-line" data-code-line="2">$topic-&gt;producev(&hellip;, $B, key: 'order-7');</span><span class="code-line" data-code-line="3"></span><span class="code-line" data-code-line="4">// producer.simple &mdash; lib defaults:</span><span class="code-line" data-code-line="5">//   retries: huge, in flight: huge</span><span class="code-line" data-code-line="6"></span><span class="code-line" data-code-line="7">// fix 1 &mdash; producer.idempotent:</span><span class="code-line" data-code-line="8">'enable.idempotence' =&gt; 'true',</span><span class="code-line" data-code-line="9">// auto: acks=all, max.in.flight=5,</span><span class="code-line" data-code-line="10">//       retries=MAX_INT, PID + seq</span><span class="code-line" data-code-line="11"></span><span class="code-line" data-code-line="12">// fix 2 &mdash; the blunt alternative:</span><span class="code-line" data-code-line="13">'max.in.flight' =&gt; '1',</span><span class="code-line" data-code-line="14">// ordered, but serialized sends</span></code></pre>
+      </aside>
+    </main>
+
+    <section class="readout">
+      <p class="narration" data-narration></p>
+      <div class="callout is-hidden" data-callout></div>
+    </section>
+
+    <nav class="controls">
+      <button data-control="reset">&#9198; Reset</button>
+      <button data-control="prev">&larr; Prev</button>
+      <span class="counter" data-counter></span>
+      <button data-control="next">Next &rarr;</button>
+      <button data-control="autoplay">&#9654; Play</button>
+    </nav>
+  </div>
+
+  <script src="assets/js/stepper.js"></script>
+  <script>
+    var steps = [
+      {
+        stages: ['php-a', 'php-b'],
+        token: 'slot-php-a',
+        code: 1,
+        narration: 'Two records about the same order — A: OrderCreated, then B: OrderUpdated. Same key order-7, so both go to the same partition, where Kafka preserves append order. The business meaning depends on that order.',
+        callout: { kind: 'note', text: 'Kafka guarantees order only within a partition — and only in the order records are appended. Appending them in produce order is the producer’s job.' }
+      },
+      {
+        stages: ['lk-queue'],
+        token: 'slot-queue',
+        code: 2,
+        narration: 'Both records sit in librdkafka’s partition queue: A first, B second. So far, so ordered — the question is what happens between this queue and the broker’s log.'
+      },
+      {
+        stages: ['sc-bad', 'bad-req-a', 'bad-req-b'],
+        token: null,
+        code: 5,
+        narration: 'producer.simple — untuned defaults. The background thread pipelines: the request carrying A goes out, and before its ack returns, the request carrying B follows on the same connection.',
+        callout: { kind: 'note', text: 'max.in.flight ≫ 1 by default. Pipelining is great for throughput — and harmless, right up until a retry happens.' }
+      },
+      {
+        stages: ['sc-bad', 'bad-fail'],
+        token: null,
+        code: null,
+        narration: 'Request 1 hits a transient error — a network blip, a leader election, an ack that timed out. A was never appended. B is still in flight, unaware.',
+        callout: { kind: 'warn', text: 'Transient failures are normal on a healthy cluster. The question is never if a retry will happen — only what happens when it does.' }
+      },
+      {
+        stages: ['sc-bad', 'bad-log-b'],
+        token: 'slot-bad-log-b',
+        code: null,
+        narration: 'Request 2 arrives intact, so the broker appends B at offset 41. The update is now in the log before the create exists anywhere.'
+      },
+      {
+        stages: ['sc-bad', 'bad-retry', 'bad-log-a'],
+        token: 'slot-bad-log-a',
+        code: 4,
+        narration: 'librdkafka retries request 1 automatically, and this time A is accepted — at offset 42. The retry succeeded, both records were delivered… in the wrong order.'
+      },
+      {
+        stages: ['sc-bad', 'bad-log-b', 'bad-log-a'],
+        token: null,
+        code: null,
+        narration: 'Final log: B (updated), then A (created). Every delivery report said success — your PHP saw zero errors. Every consumer, forever, will replay the update before the create.',
+        callout: { kind: 'warn', text: 'This failure is silent. No exception, no error callback — the reorder only surfaces downstream, when a consumer applies an update to an order that doesn’t exist yet.' }
+      },
+      {
+        stages: ['sc-good'],
+        token: null,
+        code: 8,
+        narration: 'Fix 1: enable.idempotence=true. The broker assigns the producer an id (PID), every record carries a per-partition sequence number, and the broker accepts sequences only in order.',
+        callout: { kind: 'note', text: 'One flag, the whole bundle: auto-sets acks=all, max.in.flight=5, retries=MAX_INT. This is exactly the workshop’s producer.idempotent profile.' }
+      },
+      {
+        stages: ['sc-good', 'good-req-a', 'good-req-b', 'good-fail'],
+        token: null,
+        code: 9,
+        narration: 'Same scenario, replayed: A goes out as seq 0, B as seq 1 — still pipelined, up to five in flight — and request 1 fails again.'
+      },
+      {
+        stages: ['sc-good', 'good-reject'],
+        token: null,
+        code: 10,
+        narration: 'B arrives first, but the broker expected sequence 0 and got 1. It rejects B with OUT_OF_ORDER_SEQUENCE instead of appending it — a gap in the sequence can never be silently skipped.'
+      },
+      {
+        stages: ['sc-good', 'good-resend', 'good-log-a', 'good-log-b'],
+        token: 'slot-good-log-b',
+        code: null,
+        narration: 'librdkafka resends in sequence order: A (seq 0), then B (seq 1). Log: A, then B. And if a retry resends a sequence the broker already has, it is acked without being appended again.',
+        callout: { kind: 'note', text: 'Idempotence kills both retry symptoms at once: no reordering and no duplicates — at full pipelining speed.' }
+      },
+      {
+        stages: ['sc-one', 'one-a', 'one-b', 'one-log'],
+        token: null,
+        code: 13,
+        narration: 'Fix 2, the blunt one: max.in.flight=1. B is physically never sent until A is acked, so it cannot overtake. But every send now waits for the previous ack — and a retry can still duplicate (write landed, ack lost).',
+        callout: { kind: 'warn', text: 'max.in.flight=1 buys ordering by giving up pipelining, and it still allows duplicates. Reach for it only where idempotence is unavailable (very old brokers, exotic interop).' }
+      },
+      {
+        stages: ['sc-good', 'good-log-a', 'good-log-b'],
+        token: null,
+        code: 8,
+        narration: 'Verdict: ordering under retries is a producer configuration property, not luck. enable.idempotence=true gives ordered + deduplicated + acks=all at full speed — which is why producer.idempotent is the workshop default, and producer.simple exists only to demonstrate this failure.'
+      }
+    ];
+
+    Stepper.init({ steps: steps, root: document.querySelector('[data-stepper]') });
+  </script>
+</body>
+</html>
