@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How php-rdkafka talks to Kafka — produce, poll(0), flush(100)</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <h1>How php-rdkafka talks to Kafka</h1>
+    <p class="subtitle">connect &rarr; <code>producev()</code> &rarr; <code>poll(0)</code> &rarr; <code>flush(100)</code> &mdash; why a <em>produced</em> record isn&rsquo;t a <em>sent</em> record</p>
+  </header>
+
+  <div data-stepper>
+    <main class="stage">
+      <div class="diagram">
+        <!-- PHP userland -->
+        <section class="lane lane--php">
+          <div class="lane__label">PHP userland &mdash; your script (single-threaded)</div>
+          <div class="lane__track">
+            <div class="node" data-stage="php-new">new Producer($conf)<span class="slot" data-token-slot="slot-php-new"></span></div>
+            <div class="node" data-stage="php-producev">producev(&hellip;)<span class="slot" data-token-slot="slot-php-producev"></span></div>
+            <div class="node" data-stage="php-poll">poll(0)<span class="slot" data-token-slot="slot-php-poll"></span></div>
+            <div class="node" data-stage="php-flush">flush(100)<span class="slot" data-token-slot="slot-php-flush"></span></div>
+          </div>
+        </section>
+
+        <!-- librdkafka -->
+        <section class="lane lane--lk">
+          <div class="lane__label">librdkafka &mdash; C library, background threads (same process)</div>
+          <div class="lane__track">
+            <div class="node node--queue" data-stage="lk-queue">internal partition queue<span class="slot" data-token-slot="slot-lk-queue"></span></div>
+            <div class="node node--thread" data-stage="lk-thread">background broker thread<span class="slot" data-token-slot="slot-lk-thread"></span></div>
+            <div class="node node--eventq" data-stage="lk-eventq">event queue<br>(delivery reports)<span class="slot" data-token-slot="slot-lk-eventq"></span></div>
+          </div>
+        </section>
+
+        <div class="tcp" data-stage="tcp">TCP :9092</div>
+
+        <!-- Broker -->
+        <section class="lane lane--broker">
+          <div class="lane__label">Kafka broker</div>
+          <div class="lane__track">
+            <div class="node node--broker" data-stage="broker-log">partition log + ack (acks=all)<span class="slot" data-token-slot="slot-broker"></span></div>
+          </div>
+        </section>
+
+        <div class="token is-hidden" data-token>&#128230; record</div>
+      </div>
+
+      <aside class="code-panel">
+        <pre><code><span class="code-line" data-code-line="1">$producer = new Producer($conf);</span><span class="code-line" data-code-line="2"></span><span class="code-line" data-code-line="3">$topic-&gt;producev(</span><span class="code-line" data-code-line="4">    RD_KAFKA_PARTITION_UA, 0,</span><span class="code-line" data-code-line="5">    $payload, $key, $headers,</span><span class="code-line" data-code-line="6">); // enqueue &mdash; returns at once</span><span class="code-line" data-code-line="7">$producer-&gt;poll(0); // serve reports</span><span class="code-line" data-code-line="8"></span><span class="code-line" data-code-line="9">$producer-&gt;flush(100); // drain queue</span></code></pre>
+      </aside>
+    </main>
+
+    <section class="readout">
+      <p class="narration" data-narration></p>
+      <div class="callout is-hidden" data-callout></div>
+    </section>
+
+    <nav class="controls">
+      <button data-control="reset">&#9198; Reset</button>
+      <button data-control="prev">&larr; Prev</button>
+      <span class="counter" data-counter></span>
+      <button data-control="next">Next &rarr;</button>
+      <button data-control="autoplay">&#9654; Play</button>
+    </nav>
+  </div>
+
+  <script src="assets/js/stepper.js"></script>
+  <script>
+    var steps = [
+      {
+        stages: ['php-new', 'lk-thread'],
+        token: null,
+        code: 1,
+        narration: 'new Producer($conf) starts librdkafka’s background thread(s) inside your PHP process. No record exists yet, and no TCP connection is open — connection is lazy.',
+        callout: { kind: 'note', text: 'librdkafka runs C threads beside your single-threaded PHP. Nothing connects until the first send needs the broker.' }
+      },
+      {
+        stages: ['php-producev', 'tcp'],
+        token: 'slot-php-producev',
+        code: 3,
+        narration: 'The first producev() needs cluster metadata, so librdkafka now opens a TCP connection to the bootstrap broker on :9092 and learns the partition layout.'
+      },
+      {
+        stages: ['php-producev', 'lk-queue'],
+        token: 'slot-lk-queue',
+        code: 6,
+        narration: 'producev() copies the record into librdkafka’s internal partition queue and returns immediately. Your PHP has already moved to the next line.',
+        callout: { kind: 'warn', text: 'produce ≠ send. The record is only queued in librdkafka — producev() has already returned, but nothing has reached the broker.' }
+      },
+      {
+        stages: ['lk-thread', 'tcp'],
+        token: 'slot-lk-thread',
+        code: null,
+        narration: 'On its own background thread, librdkafka batches queued records (linger.ms), compresses the batch, and sends it over TCP. This is happening outside your PHP code.',
+        callout: { kind: 'note', text: 'This runs on librdkafka’s background thread, not in your script. PHP is free — and oblivious — while this happens.' }
+      },
+      {
+        stages: ['broker-log'],
+        token: 'slot-broker',
+        code: null,
+        narration: 'The broker appends the record to the partition log and, with acks=all, waits for the in-sync replicas before acknowledging. This is the durability point.'
+      },
+      {
+        stages: ['lk-eventq'],
+        token: 'slot-lk-eventq',
+        code: null,
+        narration: 'The ack travels back and librdkafka places a delivery report on its event queue. The result now exists — but your PHP hasn’t seen it yet.'
+      },
+      {
+        stages: ['php-poll', 'lk-eventq'],
+        token: 'slot-php-poll',
+        code: 7,
+        narration: 'poll(0) serves the event queue: it fires your delivery-report callback (✓ delivered partition=N offset=M). The 0 means “serve whatever is ready, don’t block.”',
+        callout: { kind: 'warn', text: 'poll(0) is not optional. Without it, delivery reports and errors pile up unserved and never reach your PHP callbacks.' }
+      },
+      {
+        stages: ['php-flush'],
+        token: null,
+        code: 9,
+        narration: 'flush(100) blocks for up to 100 ms, polling internally until the queue is empty — every record acked and every report served. It returns NO_ERROR, or it timed out and messages may be undelivered.',
+        callout: { kind: 'warn', text: 'flush before exit. A process that exits without flush() abandons everything still in the queue — those records are lost.' }
+      }
+    ];
+
+    Stepper.init({ steps: steps, root: document.querySelector('[data-stepper]') });
+  </script>
+</body>
+</html>
