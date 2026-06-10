@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Why php-fpm can't keep up with Kafka (and floods it)</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <a class="home-link" href="index.html">&larr; All visuals</a>
+    <h1>Why php-fpm can&rsquo;t keep up with Kafka</h1>
+    <p class="subtitle">a producer that dies with every request &mdash; slow for you, a <em>connection storm</em> for the broker</p>
+  </header>
+
+  <div data-stepper>
+    <main class="stage">
+      <div class="diagram">
+        <!-- HTTP -->
+        <section class="lane" data-stage="http">
+          <div class="lane__label">HTTP</div>
+          <div class="lane__track">
+            <div class="node" data-stage="http">incoming request<span class="slot" data-token-slot="slot-http"></span></div>
+          </div>
+        </section>
+
+        <!-- php-fpm worker -->
+        <section class="lane" data-stage="fpm">
+          <div class="lane__label">php-fpm worker &mdash; rebuilt per request (shared-nothing)</div>
+          <div class="lane__track">
+            <div class="node" data-stage="php-new">new Producer($conf)<span class="slot" data-token-slot="slot-php-new"></span></div>
+            <div class="node" data-stage="handshake">connect handshake<br>TCP + metadata + TLS/SASL<span class="slot" data-token-slot="slot-handshake"></span></div>
+            <div class="node" data-stage="producev">producev() &times;1<span class="slot" data-token-slot="slot-producev"></span></div>
+            <div class="node" data-stage="flush">flush?<span class="slot" data-token-slot="slot-flush"></span></div>
+            <div class="node" data-stage="destruct">__destruct<br>producer + TCP gone<span class="slot" data-token-slot="slot-destruct"></span></div>
+          </div>
+        </section>
+
+        <!-- Broker + meters -->
+        <section class="lane" data-stage="broker">
+          <div class="lane__label">Kafka broker</div>
+          <div class="lane__track">
+            <div class="node node--broker">partition log</div>
+          </div>
+          <div class="meters">
+            <div class="meter"><span class="meter__label">broker connections</span><span class="meter__value" data-set="conn" data-default="0">0</span></div>
+            <div class="meter"><span class="meter__label">batch</span><span class="meter__value" data-set="batch" data-default="&mdash;">&mdash;</span></div>
+            <div class="meter"><span class="meter__label">net effect</span><span class="meter__value" data-set="effect" data-default="&mdash;">&mdash;</span></div>
+          </div>
+        </section>
+
+        <!-- Worker fleet (storm) -->
+        <div class="fleet" data-stage="fleet">
+          <span class="worker-chip">w1</span><span class="worker-chip">w2</span><span class="worker-chip">w3</span>
+          <span class="worker-chip">w4</span><span class="worker-chip">w5</span><span class="worker-chip">w6</span>
+          <span class="worker-chip">w7</span><span class="worker-chip">w8</span><span class="worker-chip">&hellip;</span>
+        </div>
+
+        <!-- The fix -->
+        <section class="lane lane--longlived" data-stage="longlived">
+          <div class="lane__label">the fix &mdash; long-lived producer (CLI / worker)</div>
+          <div class="lane__track">
+            <div class="node">boot once</div>
+            <div class="node">one reused connection</div>
+            <div class="node">batches across requests</div>
+            <div class="node">stable idempotent PID</div>
+          </div>
+        </section>
+
+        <div class="token is-hidden" data-token>&#128231; request</div>
+      </div>
+
+      <aside class="code-panel">
+        <pre><code><span class="code-line" data-code-line="1">// runs INSIDE every HTTP request (php-fpm)</span><span class="code-line" data-code-line="2">$producer = new Producer($conf);   // built per request</span><span class="code-line" data-code-line="3">$topic-&gt;producev(UA, 0, $payload); // one message</span><span class="code-line" data-code-line="4">$producer-&gt;flush($timeout);        // flush dilemma</span><span class="code-line" data-code-line="5">// request ends &rarr; __destruct &rarr; handle + TCP gone</span><span class="code-line" data-code-line="6"></span><span class="code-line" data-code-line="7">// long-lived (CLI / worker): built ONCE</span><span class="code-line" data-code-line="8">$producer = new Producer($conf);   // boot once</span><span class="code-line" data-code-line="9">while (handle request / loop) {</span><span class="code-line" data-code-line="10">    $producer-&gt;producev(...);</span><span class="code-line" data-code-line="11">    $producer-&gt;poll(0);            // batches accrue</span><span class="code-line" data-code-line="12">}</span><span class="code-line" data-code-line="13">$producer-&gt;flush(10000);           // drain on stop</span></code></pre>
+      </aside>
+    </main>
+
+    <section class="readout">
+      <p class="narration" data-narration></p>
+      <div class="callout is-hidden" data-callout></div>
+    </section>
+
+    <nav class="controls">
+      <button data-control="reset">&#9198; Reset</button>
+      <button data-control="prev">&larr; Prev</button>
+      <span class="counter" data-counter></span>
+      <button data-control="next">Next &rarr;</button>
+      <button data-control="autoplay">&#9654; Play</button>
+    </nav>
+  </div>
+
+  <script src="assets/js/stepper.js"></script>
+  <script>
+    var steps = [
+      {
+        stages: ['http', 'fpm'],
+        token: 'slot-http',
+        code: 1,
+        set: { conn: '0', batch: '—', effect: '—' },
+        narration: 'An HTTP request reaches a php-fpm worker. PHP is shared-nothing: the worker builds everything this request needs from scratch, then tears it all down when the request ends.',
+        callout: { kind: 'note', text: 'Shared-nothing: nothing the request creates survives past it — including the Kafka producer.' }
+      },
+      {
+        stages: ['php-new'],
+        token: 'slot-php-new',
+        code: 2,
+        narration: 'Inside the request, the code constructs a new RdKafka\\Producer. There is no supported way to keep that handle alive across requests.',
+        callout: { kind: 'warn', text: 'Root cause: PHP destroys every object at request end, so the producer cannot outlive the request.' }
+      },
+      {
+        stages: ['handshake', 'broker'],
+        token: 'slot-handshake',
+        code: 2,
+        set: { conn: '1' },
+        narration: 'The fresh producer must connect: a new TCP socket, a metadata fetch, and a TLS/SASL handshake — tens to hundreds of milliseconds before the first message byte can move.',
+        callout: { kind: 'warn', text: 'This handshake happens on every request. The setup cost is paid again and again.' }
+      },
+      {
+        stages: ['producev', 'broker'],
+        token: 'slot-producev',
+        code: 3,
+        set: { batch: '1 msg' },
+        narration: 'producev() queues a single message. linger.ms can’t help — teardown is milliseconds away — so it ships as one tiny, poorly compressed batch.',
+        callout: { kind: 'note', text: 'Batching defeated: one message per batch means no compression win and a round-trip per record.' }
+      },
+      {
+        stages: ['flush'],
+        token: 'slot-flush',
+        code: 4,
+        narration: 'Now the flush dilemma. Flush before responding and you add a broker round-trip to your HTTP tail latency. Skip the flush and the async-queued message dies when the request ends.',
+        callout: { kind: 'warn', text: 'Flush → slower responses. Skip flush → lost messages. There is no free option inside a request.' }
+      },
+      {
+        stages: ['destruct'],
+        token: 'slot-destruct',
+        code: 5,
+        set: { conn: '0' },
+        narration: 'The request ends. __destruct tears down the producer and closes the TCP connection. All of that setup is thrown away — to be rebuilt on the next request.',
+        callout: { kind: 'note', text: 'The connection that took ~100 ms to establish lived for a single message.' }
+      },
+      {
+        stages: ['fleet', 'broker'],
+        token: null,
+        code: 1,
+        set: { conn: '200+', effect: 'connection storm' },
+        narration: 'Now multiply it: hundreds of fpm workers, each doing this on every request. Every request is a fresh connect-and-teardown, so the broker sees a constant churn of new connections.',
+        callout: { kind: 'warn', text: 'Connection storm — php-fpm generates load on Kafka just by connecting and reconnecting, before any throughput.' }
+      },
+      {
+        stages: ['fleet', 'broker'],
+        token: null,
+        code: null,
+        set: { batch: 'many tiny', effect: 'slow + high churn' },
+        narration: 'The net effect: many tiny uncompressed batches, a handshake on every request, and no stable idempotent producer id across requests. Slow for you, heavy for the broker.',
+        callout: { kind: 'note', text: 'You pay maximum overhead for minimum throughput — the opposite of what Kafka is built for.' }
+      },
+      {
+        stages: ['longlived', 'broker'],
+        token: null,
+        code: 8,
+        set: { conn: '1', batch: '500 msgs', effect: 'reused' },
+        narration: 'The fix is to let the producer outlive the request. A long-lived producer — the workshop’s CLI command, or a worker — boots once, reuses one connection, batches across many requests, and keeps a stable idempotent id.',
+        callout: { kind: 'note', text: 'FrankenPHP worker mode and Swoole recover this in the web tier. (The dual-write / outbox problem is separate — Block 6 — and orthogonal to runtime.)' }
+      }
+    ];
+
+    Stepper.init({ steps: steps, root: document.querySelector('[data-stepper]') });
+  </script>
+</body>
+</html>
