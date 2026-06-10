@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka Visuals — PHP Workshop</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <h1>Kafka Visuals</h1>
+    <p class="subtitle">Animated process-flow diagrams for the PHP + Kafka workshop. Open a page, then step through with <code>Next</code> / <code>&larr;</code> <code>&rarr;</code>.</p>
+  </header>
+
+  <ul class="toc">
+    <li>
+      <span class="tag">Producer</span>
+      <div><a href="01-producer-async-path.html">1 &middot; How php-rdkafka talks to Kafka</a></div>
+      <div class="desc">The async produce path: <code>new Producer</code> &rarr; lazy connect &rarr; <code>producev()</code> enqueues &rarr; background thread sends &rarr; broker ack &rarr; delivery report &rarr; <code>poll(0)</code> &rarr; <code>flush(100)</code>. Why a produced record isn&rsquo;t a sent record.</div>
+    </li>
+    <li class="soon">
+      <span class="tag">Consumer &middot; coming soon</span>
+      <div>2 &middot; The consumer poll loop</div>
+      <div class="desc">assignment &rarr; poll &rarr; AVRO decode &rarr; route by header &rarr; handle &rarr; commit, and where the commit decides the delivery guarantee.</div>
+    </li>
+  </ul>
+</body>
+</html>
