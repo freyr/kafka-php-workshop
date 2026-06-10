@@ -340,3 +340,22 @@ a { color: var(--accent); }
 }
 .log__cell.current { color: var(--accent); border-color: var(--accent); }
 .loop-back { border-style: dashed; color: var(--ink-dim); }
+
+/* ---- Partition mini-grid + cells (page 5) ---- */
+.pcells { display: flex; flex-wrap: wrap; gap: .35rem; margin: .2rem 0 .5rem; }
+.pcell {
+  font-family: var(--mono);
+  font-size: .78rem;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  padding: .3rem .55rem;
+  min-width: 2.4rem;
+  text-align: center;
+  color: var(--ink-dim);
+}
+.pcell--paused { border-color: var(--warn); background: var(--warn-bg); color: #ffd591; }
+.pcell--moved  { border-color: var(--accent); background: var(--accent-ink); color: var(--ink); }
+.pcell--kept   { border-color: var(--ok); background: #142b18; color: #b6f0c0; }
+.scenario__note { font-size: .85rem; color: var(--ink-dim); }
+.node--joiner { border-style: dashed; }
+.muted { color: var(--ink-dim); font-size: .78rem; }
