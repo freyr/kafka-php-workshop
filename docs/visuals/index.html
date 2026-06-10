@@ -23,9 +23,14 @@
       <div><a href="02-php-fpm-and-kafka.html">2 &middot; Why php-fpm can&rsquo;t keep up with Kafka</a></div>
       <div class="desc">A producer rebuilt on every request: connection storm, defeated batching, and the flush dilemma &mdash; why php-fpm is slow <em>and</em> loads the broker, and how a long-lived producer fixes it.</div>
     </li>
+    <li>
+      <span class="tag">Producer</span>
+      <div><a href="03-producer-retry-reordering.html">3 &middot; When retries reorder your records</a></div>
+      <div class="desc">Two records, one transient error: pipelined requests + automatic retries append <em>updated</em> before <em>created</em> &mdash; silently. How <code>enable.idempotence=true</code> (PID + sequence numbers) prevents it, and why <code>max.in.flight=1</code> is the blunt fallback.</div>
+    </li>
     <li class="soon">
       <span class="tag">Consumer &middot; coming soon</span>
-      <div>3 &middot; The consumer poll loop</div>
+      <div>4 &middot; The consumer poll loop</div>
       <div class="desc">assignment &rarr; poll &rarr; AVRO decode &rarr; route by header &rarr; handle &rarr; commit, and where the commit decides the delivery guarantee.</div>
     </li>
   </ul>
