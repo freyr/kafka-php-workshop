@@ -33,6 +33,12 @@
     this.stages = toArray(this.root.querySelectorAll('[data-stage]'));
     this.codeLines = toArray(this.root.querySelectorAll('[data-code-line]'));
 
+    var self = this;
+    this.setEls = {};
+    toArray(this.root.querySelectorAll('[data-set]')).forEach(function (el) {
+      self.setEls[el.getAttribute('data-set')] = el;
+    });
+
     this.bindControls();
     this.bindKeys();
     this.render();
@@ -139,6 +145,24 @@
       } else {
         this.callout.className = 'callout is-hidden';
         this.callout.textContent = '';
+      }
+    }
+
+    // Effective per-step text values. State is derived from the index by walking
+    // steps 0..index (last value wins), so meters are correct after backward jumps.
+    var effective = {};
+    for (var i = 0; i <= this.index; i++) {
+      var s = this.steps[i];
+      if (s && s.set) {
+        for (var k in s.set) {
+          if (Object.prototype.hasOwnProperty.call(s.set, k)) { effective[k] = s.set[k]; }
+        }
+      }
+    }
+    for (var key in this.setEls) {
+      if (Object.prototype.hasOwnProperty.call(this.setEls, key)) {
+        var val = (effective[key] != null) ? effective[key] : (this.setEls[key].getAttribute('data-default') || '');
+        this.setEls[key].textContent = val;
       }
     }
 
