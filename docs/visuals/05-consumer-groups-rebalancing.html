@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consumer groups & partition rebalancing</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="deck-header">
+    <a class="home-link" href="index.html">&larr; All visuals</a>
+    <h1>Consumer groups &amp; partition rebalancing</h1>
+    <p class="subtitle">how a group splits partitions across members &mdash; and how a rebalance moves them: eager vs cooperative-sticky vs static</p>
+  </header>
+
+  <div data-stepper>
+    <main class="stage">
+      <div class="diagram">
+        <!-- Topic partitions + meters -->
+        <section class="lane" data-stage="topic">
+          <div class="lane__label">topic <code>orders</code> &mdash; 6 partitions</div>
+          <div class="log">
+            <span class="log__cell">P0</span>
+            <span class="log__cell">P1</span>
+            <span class="log__cell">P2</span>
+            <span class="log__cell">P3</span>
+            <span class="log__cell">P4</span>
+            <span class="log__cell">P5</span>
+          </div>
+          <div class="meters">
+            <div class="meter"><span class="meter__label">G1 members</span><span class="meter__value" data-set="members" data-default="2">2</span></div>
+            <div class="meter"><span class="meter__label">partitions paused</span><span class="meter__value" data-set="paused" data-default="&mdash;">&mdash;</span></div>
+            <div class="meter"><span class="meter__label">rebalance</span><span class="meter__value" data-set="rebalance" data-default="&mdash;">&mdash;</span></div>
+          </div>
+        </section>
+
+        <!-- Group G1 -->
+        <section class="lane" data-stage="g1">
+          <div class="lane__label">group <code>G1</code> &mdash; one logical subscriber, partitions split across members</div>
+          <div class="lane__track">
+            <div class="node">C1<br><span class="muted">P0 P1 P2</span></div>
+            <div class="node">C2<br><span class="muted">P3 P4 P5</span></div>
+            <div class="node node--joiner" data-stage="c3">C3 &#127381; joining<span class="slot" data-token-slot="slot-join"></span></div>
+          </div>
+        </section>
+
+        <!-- Group G2 (fan-out) -->
+        <section class="lane scenario" data-stage="g2">
+          <div class="lane__label">group <code>G2</code> (analytics) &mdash; same topic, independent</div>
+          <div class="lane__track">
+            <div class="node">CA<br><span class="muted">P0&ndash;P5, own offsets</span></div>
+          </div>
+        </section>
+
+        <!-- Scenario: eager -->
+        <section class="lane scenario" data-stage="s-eager">
+          <div class="lane__label">eager (range,roundrobin &mdash; the <code>default</code> profile)</div>
+          <div class="pcells">
+            <span class="pcell pcell--paused">P0</span><span class="pcell pcell--paused">P1</span><span class="pcell pcell--paused">P2</span>
+            <span class="pcell pcell--paused">P3</span><span class="pcell pcell--paused">P4</span><span class="pcell pcell--paused">P5</span>
+          </div>
+          <div class="scenario__note">revoke ALL &rarr; reassign &mdash; every partition pauses (stop-the-world)</div>
+        </section>
+
+        <!-- Scenario: cooperative-sticky -->
+        <section class="lane scenario" data-stage="s-coop">
+          <div class="lane__label">cooperative-sticky (the <code>modern</code> profile)</div>
+          <div class="pcells">
+            <span class="pcell pcell--kept">P0</span><span class="pcell pcell--kept">P1</span><span class="pcell pcell--moved">P2</span>
+            <span class="pcell pcell--kept">P3</span><span class="pcell pcell--kept">P4</span><span class="pcell pcell--moved">P5</span>
+          </div>
+          <div class="scenario__note">only P2, P5 move to C3 &mdash; C1/C2 keep processing the rest (no global pause)</div>
+        </section>
+
+        <!-- Scenario: static membership -->
+        <section class="lane scenario" data-stage="s-static">
+          <div class="lane__label">static membership (<code>group.instance.id</code>)</div>
+          <div class="pcells">
+            <span class="pcell pcell--kept">P0</span><span class="pcell pcell--kept">P1</span><span class="pcell pcell--kept">P2</span>
+            <span class="pcell pcell--kept">P3</span><span class="pcell pcell--kept">P4</span><span class="pcell pcell--kept">P5</span>
+          </div>
+          <div class="scenario__note">a restart with a stable id rejoins within session.timeout.ms &mdash; no rebalance at all</div>
+        </section>
+
+        <!-- Summary -->
+        <section class="lane scenario" data-stage="summary">
+          <div class="lane__label">choosing a profile</div>
+          <div class="lane__track">
+            <div class="node"><code>default</code><br><span class="muted">eager &mdash; stable groups</span></div>
+            <div class="node node--ok"><code>modern</code><br><span class="muted">cooperative + static &mdash; rolling deploys</span></div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="code-panel">
+        <pre><code><span class="code-line" data-code-line="1">// profile: default — eager rebalancing</span><span class="code-line" data-code-line="2">'partition.assignment.strategy' =&gt; 'range,roundrobin',</span><span class="code-line" data-code-line="3">$consumer-&gt;assign($all);   // revoke all, then reassign</span><span class="code-line" data-code-line="4"></span><span class="code-line" data-code-line="5">// profile: modern — cooperative + static</span><span class="code-line" data-code-line="6">'partition.assignment.strategy' =&gt; 'cooperative-sticky',</span><span class="code-line" data-code-line="7">'group.instance.id' =&gt; gethostname(),</span><span class="code-line" data-code-line="8">$consumer-&gt;incrementalAssign($moved);   // only the movers</span><span class="code-line" data-code-line="9">$consumer-&gt;incrementalUnassign($moved);</span></code></pre>
+      </aside>
+    </main>
+
+    <section class="readout">
+      <p class="narration" data-narration></p>
+      <div class="callout is-hidden" data-callout></div>
+    </section>
+
+    <nav class="controls">
+      <button data-control="reset">&#9198; Reset</button>
+      <button data-control="prev">&larr; Prev</button>
+      <span class="counter" data-counter></span>
+      <button data-control="next">Next &rarr;</button>
+      <button data-control="autoplay">&#9654; Play</button>
+    </nav>
+  </div>
+
+  <script src="assets/js/stepper.js"></script>
+  <script>
+    var steps = [
+      {
+        stages: ['topic', 'g1'],
+        token: null,
+        code: null,
+        set: { members: '2', paused: '—', rebalance: '—' },
+        narration: 'A consumer group is one logical subscriber. Topic orders has 6 partitions; group G1 has C1 and C2, so C1 takes P0–P2 and C2 takes P3–P5. Each partition is owned by exactly one member.',
+        callout: { kind: 'note', text: 'A partition is consumed by at most one member of a group — partitions are the unit of parallelism. More consumers than partitions means idle consumers.' }
+      },
+      {
+        stages: ['g2', 'topic'],
+        token: null,
+        code: null,
+        narration: 'A second group, G2 (analytics), subscribes to the same topic. It gets ALL six partitions and keeps its own committed offsets — completely independent of G1.',
+        callout: { kind: 'note', text: 'Groups are isolated: each group gets the full topic with its own offsets. Adding G2 does not split G1’s work — that is fan-out, not load-sharing.' }
+      },
+      {
+        stages: ['g1', 'c3'],
+        token: 'slot-join',
+        code: null,
+        set: { members: '3' },
+        narration: 'Now scale G1: a third consumer, C3, joins. Six partitions must be reshared among three members, so a rebalance is triggered. How disruptive that is depends entirely on the assignment strategy.',
+        callout: { kind: 'note', text: 'Changing membership — a join, a leave, or a restart — is what triggers a rebalance.' }
+      },
+      {
+        stages: ['s-eager'],
+        token: null,
+        code: 2,
+        set: { paused: '6 (all)', rebalance: 'stop-the-world' },
+        narration: 'eager (range,roundrobin — the default profile): every member revokes its WHOLE assignment, then all six partitions are reassigned. Every partition pauses until reassignment completes.',
+        callout: { kind: 'warn', text: 'Eager is stop-the-world: a single join freezes the entire group’s consumption for the duration of the rebalance.' }
+      },
+      {
+        stages: ['s-coop'],
+        token: null,
+        code: 6,
+        set: { paused: '2 (moving)', rebalance: 'incremental' },
+        narration: 'cooperative-sticky (the modern profile): only the partitions that actually move to C3 — P2 and P5 — are revoked. C1 and C2 keep processing everything else. No global pause.',
+        callout: { kind: 'note', text: 'Incremental rebalancing moves only what must move — it kills the rebalance storm during rolling deploys and on large groups.' }
+      },
+      {
+        stages: ['s-static'],
+        token: null,
+        code: 7,
+        set: { paused: '0', rebalance: 'none' },
+        narration: 'static membership (group.instance.id): when a member restarts — a rolling deploy — a stable instance id lets it rejoin within session.timeout.ms. No rebalance happens at all; its partitions wait briefly, then resume.',
+        callout: { kind: 'note', text: 'Static membership turns a transient restart from a rebalance into a no-op — the group never reassigns.' }
+      },
+      {
+        stages: ['summary'],
+        token: null,
+        code: null,
+        set: { members: '3', paused: '—', rebalance: '—' },
+        narration: 'So: default (eager) is simple and fine for stable groups. modern (cooperative-sticky + static membership) is for rolling deploys and large groups — it avoids the stop-the-world rebalance storm.',
+        callout: { kind: 'note', text: 'These are the workshop’s default vs modern consumer profiles — the same partition.assignment.strategy the broker negotiates decides which assign API the rebalance callback may call.' }
+      }
+    ];
+
+    Stepper.init({ steps: steps, root: document.querySelector('[data-stepper]') });
+  </script>
+</body>
+</html>
