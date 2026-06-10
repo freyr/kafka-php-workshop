@@ -34,6 +34,16 @@ body { padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem; }
 
 a { color: var(--accent); }
 
+.home-link {
+  display: inline-block;
+  margin-bottom: .9rem;
+  color: var(--ink-dim);
+  text-decoration: none;
+  font-size: .9rem;
+  font-family: var(--mono);
+}
+.home-link:hover { color: var(--accent); }
+
 .deck-header h1 {
   margin: 0 0 .25rem;
   font-size: clamp(1.6rem, 3.5vw, 2.4rem);
