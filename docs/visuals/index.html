@@ -33,10 +33,10 @@
       <div><a href="04-consumer-poll-loop.html">4 &middot; The consumer poll loop</a></div>
       <div class="desc">subscribe &rarr; consume &rarr; handle &rarr; commit &rarr; repeat &mdash; and how <em>where you commit</em> turns a crash into a lost message, a redelivery, or a harmless no-op (at-most / at-least / effectively-once).</div>
     </li>
-    <li class="soon">
-      <span class="tag">Consumer &middot; coming soon</span>
-      <div>5 &middot; Consumer groups &amp; rebalancing</div>
-      <div class="desc">partitions spread across group members; eager (stop-the-world) vs cooperative-sticky vs static membership.</div>
+    <li>
+      <span class="tag">Consumer</span>
+      <div><a href="05-consumer-groups-rebalancing.html">5 &middot; Consumer groups &amp; rebalancing</a></div>
+      <div class="desc">how a group splits a topic&rsquo;s partitions across members, a second group&rsquo;s independent fan-out, and the three rebalance behaviors &mdash; eager (stop-the-world) vs cooperative-sticky (incremental) vs static membership (restart &rarr; no rebalance).</div>
     </li>
   </ul>
 </body>
