@@ -325,3 +325,18 @@ a { color: var(--accent); }
   box-shadow: 0 0 0 1px var(--ok), 0 0 18px -6px var(--ok);
   animation: none;
 }
+
+/* ---- Partition log strip (page 4) ---- */
+.log { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .2rem; }
+.log__cell {
+  font-family: var(--mono);
+  font-size: .8rem;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: .25rem .55rem;
+  min-width: 2.2rem;
+  text-align: center;
+}
+.log__cell.current { color: var(--accent); border-color: var(--accent); }
+.loop-back { border-style: dashed; color: var(--ink-dim); }
