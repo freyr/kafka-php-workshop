@@ -242,8 +242,8 @@ runbook: `Block-06-Demo-Runbook.md` in the Consulting vault.
   not a new class; reach for a new command only for a genuinely distinct operation.
 - **Routing as data.** Topic/subject/schema and name→DTO maps live in YAML, not code.
 - **Subjects use RecordNameStrategy by default** — the fully-qualified record name
-  (`com.ecommerce.orders.order_created`), carrying no version marker; a breaking
-  change mints a new subject. Each event type evolves on its own lineage. The
+  exactly as it reads in the `.avsc` (`com.ecommerce.orders.OrderCreated`),
+  carrying no version marker; a breaking change mints a new subject. Each event type evolves on its own lineage. The
   Block 9 catalog route uses TopicNameStrategy (`<topic>-value`) for stock Kafka
   Connect interop.
 - **Config in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`); per-user overrides

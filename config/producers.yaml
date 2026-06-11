@@ -1,7 +1,8 @@
 # Produce-side routing: message name => wire identity (topic + subject + schema).
 # Every route is AVRO — the producer streams enveloped events encoded against
 # Schema Registry. Subjects use RecordNameStrategy by default (the schema's
-# fully-qualified record name, lower_snake component) and carry NO version marker
+# fully-qualified record name, EXACTLY as `namespace.Name` reads in the .avsc —
+# what a strict strategy implementation would compute) and carry NO version marker
 # — a breaking change mints a brand-new subject, never a vN suffix; the Block 9
 # catalog route is the documented exception, using TopicNameStrategy
 # (<topic>-value) for stock Kafka Connect interop (see that route's comment).
@@ -11,28 +12,28 @@ workshop:
     producers:
         order.created:
             topic: enet.ecommerce.orders
-            subject: com.ecommerce.orders.order_created
+            subject: com.ecommerce.orders.OrderCreated
             schema: '%kafka.schema_dir%/orders/OrderCreated.avsc'
         order.updated:
             topic: enet.ecommerce.orders
-            subject: com.ecommerce.orders.order_updated
+            subject: com.ecommerce.orders.OrderUpdated
             schema: '%kafka.schema_dir%/orders/OrderUpdated.avsc'
         order.cancelled:
             topic: enet.ecommerce.orders
-            subject: com.ecommerce.orders.order_cancelled
+            subject: com.ecommerce.orders.OrderCancelled
             schema: '%kafka.schema_dir%/orders/OrderCancelled.avsc'
         # Single-partition audit log for the consumer-group offsets demo
         # (demo:offsets:*). One partition → each consumer group's committed
         # offset tracks the stream 1:1, easy to read per group in kafka-ui.
         order.audited:
             topic: enet.ecommerce.audit
-            subject: com.ecommerce.audit.order_audited
+            subject: com.ecommerce.audit.OrderAudited
             schema: '%kafka.schema_dir%/audit/OrderAudited.avsc'
         # Block 4 schema-evolution playground — a flat, throwaway event on its own
         # topic. You edit this schema in place during the exercise.
         demo.order.evolved:
             topic: enet.demo.orders
-            subject: com.ecommerce.demo.order_evolved
+            subject: com.ecommerce.demo.OrderEvolved
             schema: '%kafka.schema_dir%/demo/OrderEvolved.avsc'
         # Block 7 error-handling demo — produced only through the outbox
         # (aggregate_type=ErrorDemo), so the topic here is the relay's
@@ -40,7 +41,7 @@ workshop:
         # route's real job is the subject + schema the AVRO encode resolves.
         error.demo:
             topic: enet.ecommerce.outbox.ErrorDemo
-            subject: com.ecommerce.demo.error_demo
+            subject: com.ecommerce.demo.ErrorDemo
             schema: '%kafka.schema_dir%/demo/ErrorDemo.avsc'
         # Block 9 — catalog projection demo. A state-transfer (fat) event carrying
         # the product's FULL current state, placed only through the
