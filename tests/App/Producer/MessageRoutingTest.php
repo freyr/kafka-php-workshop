@@ -14,7 +14,7 @@ final class MessageRoutingTest extends TestCase
         $routing = new MessageRouting([
             'order.created' => [
                 'topic' => 'enet.ecommerce.orders',
-                'subject' => 'com.ecommerce.orders.order_created',
+                'subject' => 'com.ecommerce.orders.OrderCreated',
                 'schema' => __DIR__ . '/../../../schemas/orders/OrderCreated.avsc',
             ],
         ]);
@@ -22,7 +22,7 @@ final class MessageRoutingTest extends TestCase
         $route = $routing->for('order.created');
 
         self::assertSame('enet.ecommerce.orders', $route->topic);
-        self::assertSame('com.ecommerce.orders.order_created', $route->subject);
+        self::assertSame('com.ecommerce.orders.OrderCreated', $route->subject);
         self::assertStringContainsString('"OrderCreated"', $route->schemaJson());
     }
 

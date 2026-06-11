@@ -33,7 +33,7 @@ final class SchemaRegisterCommandTest extends TestCase
         $routing = new MessageRouting([
             'order.created' => [
                 'topic' => 'enet.ecommerce.orders',
-                'subject' => 'com.ecommerce.orders.order_created',
+                'subject' => 'com.ecommerce.orders.OrderCreated',
                 'schema' => '/tmp/canonical-not-used-here.avsc',
             ],
         ]);

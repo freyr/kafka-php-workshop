@@ -43,7 +43,7 @@ final class DlqRepairTest extends TestCase
         ], true, null);
 
         self::assertSame("\x00\x00\x00\x00\x06raw-avro-body", $result['payload']);
-        self::assertSame(['re-framed against subject com.ecommerce.demo.error_demo, schema id 6'], $result['applied']);
+        self::assertSame(['re-framed against subject com.ecommerce.demo.ErrorDemo, schema id 6'], $result['applied']);
         self::assertSame([], $result['defects']);
     }
 
@@ -101,7 +101,7 @@ final class DlqRepairTest extends TestCase
             new MessageRouting([
                 'error.demo' => [
                     'topic' => 'enet.ecommerce.outbox.ErrorDemo',
-                    'subject' => 'com.ecommerce.demo.error_demo',
+                    'subject' => 'com.ecommerce.demo.ErrorDemo',
                 ],
             ]),
             new SchemaRegistryClient(new Client([
