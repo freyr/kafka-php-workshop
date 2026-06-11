@@ -60,7 +60,18 @@ final readonly class MessageInterpreter
     public function decode(\RdKafka\Message $message, ?\AvroSchema $readerSchema = null, bool $poisonGate = false): ?DecodedRecord
     {
         $name = $this->header($message, 'message-name');
-        $dtoClass = '' === $name ? null : $this->routing->for($name);
+        if ('' === $name) {
+            // The header is not AVRO — it is the envelope CONVENTION, and without
+            // it the record can never be routed. On a tolerant consumer that is a
+            // silent skip; under the gate it is the contract-violation poison.
+            if ($poisonGate) {
+                throw new PoisonMessageException('Message carries no message-name header — the envelope convention is broken, so the record can never be routed.');
+            }
+
+            return null;
+        }
+
+        $dtoClass = $this->routing->for($name);
         if (null === $dtoClass) {
             return null; // a type this consumer does not handle — skip, no decode
         }

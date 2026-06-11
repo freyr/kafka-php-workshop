@@ -107,8 +107,8 @@ errors-setup: ## provision the Block 7 demo: ensure topics, re-provision the out
 	bin/kafka-setup
 	docker compose run --rm php bin/console outbox:setup --fresh --format avro
 	docker compose run --rm php bin/console kafka:consume:setup
-errors-produce: ## place error.demo events through the outbox with poison scattered in (COUNT=20 POISON=3), then relay them to the main topic
-	docker compose run --rm php bin/console outbox:place --message-name error.demo --format avro --count $(or $(COUNT),20) --poison $(or $(POISON),3)
+errors-produce: ## place error.demo events through the outbox with failures scattered in (COUNT=20 POISON=2 unframed + HEADERLESS=2 convention-less), then relay them to the main topic
+	docker compose run --rm php bin/console outbox:place --message-name error.demo --format avro --count $(or $(COUNT),20) --poison $(or $(POISON),2) --headerless $(or $(HEADERLESS),2)
 	docker compose run --rm php bin/console outbox:relay --once
 errors-consume-main: ## the main lane: 3 short retries, then off-load; poison/permanent → DLQ; breaker fails fast. Ctrl+C to stop
 	docker compose run --rm php bin/console kafka:consume enet.ecommerce.outbox.ErrorDemo --errors main --profile modern --idempotent --group errors-main -v

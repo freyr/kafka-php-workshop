@@ -45,29 +45,27 @@ final readonly class OutboxPlacer
     }
 
     /**
-     * @param bool $crashBeforeCommit throw after both writes, right before
-     *                                COMMIT — the rollback demo (--fail)
-     * @param bool $poison            corrupt the stored payload bytes — the Block 7
-     *                                poison-injection beat: headers stay correct, so
-     *                                the message routes to the consumer and then
-     *                                fails its decode gate
+     * @param bool   $crashBeforeCommit throw after both writes, right before
+     *                                  COMMIT — the rollback demo (--fail)
+     * @param Tamper $tamper            the Block 7 failure-injection kind: break the
+     *                                  schema reference (poison), drop the
+     *                                  message-name convention header (poison), or
+     *                                  corrupt the body under a valid schema id
+     *                                  (NOT poison — decodes silently into junk)
      *
      * @throws SimulatedCrash          when $crashBeforeCommit is set (after rollback)
      * @throws SchemaRegistryException when the Avro format must encode against an unregistered subject
      * @throws DriverException         when the encoding does not match the provisioned payload column (e.g. AVRO bytes into a JSON column)
      */
-    public function place(Message $message, bool $crashBeforeCommit = false, PayloadFormat $format = PayloadFormat::Json, bool $poison = false): void
+    public function place(Message $message, bool $crashBeforeCommit = false, PayloadFormat $format = PayloadFormat::Json, Tamper $tamper = Tamper::None): void
     {
         // Encoding happens OUTSIDE the transaction on purpose: the AVRO path may
         // call the Schema Registry (cache miss), and a remote lookup has no
         // business holding a database transaction open — same discipline as
         // keeping the broker off the business write's critical path.
-        $payload = $this->encode($message, $format);
-        if ($poison) {
-            $payload = $this->corrupt($payload, $format);
-        }
+        $payload = $this->corrupt($this->encode($message, $format), $format, $tamper);
 
-        $this->connection->transactional(function () use ($message, $payload, $crashBeforeCommit): void {
+        $this->connection->transactional(function () use ($message, $payload, $crashBeforeCommit, $tamper): void {
             $eventType = $this->names->nameOf($message);
 
             // Write 1: the business state change (the "real work"). The error.demo
@@ -80,11 +78,14 @@ final readonly class OutboxPlacer
             }
 
             // Write 2: the event, appended to the outbox in the SAME transaction.
+            // A Headerless tamper stores an empty event_type: the relay derives the
+            // message-name header from that column, so the record ships WITHOUT the
+            // routing convention — the payload itself stays perfectly valid.
             $this->outbox->add(
                 $message->eventId(),
                 $aggregateType,
                 $message->partitionKey(),
-                $eventType,
+                Tamper::Headerless === $tamper ? '' : $eventType,
                 $payload,
             );
 
@@ -95,21 +96,26 @@ final readonly class OutboxPlacer
     }
 
     /**
-     * Turn a valid encoding into poison the relay will faithfully ship. For AVRO
-     * the magic byte survives but the frame's schema id becomes 0xFFFFFFFF — an id
-     * the registry will never hold. The consumer routes the message, tries to
-     * resolve the writer schema, and the registry says 404: a deterministic decode
-     * failure, and the classic real-world poison (someone broke the schema
-     * contract). Corrupting the BODY is deliberately not how this works — avro-php
-     * happily decodes garbage or even zero bytes into junk default values, so a
-     * body corruption is not reliably poison at all. For JSON the whole payload
-     * becomes a non-JSON marker. The relay's contract is bytes; it cannot protect
-     * the consumer — the consumer defends itself.
+     * Apply the payload half of a tamper (Headerless does not touch the payload —
+     * its violation is the missing convention header, applied at the outbox row).
+     *
+     * Unframed strips the whole 5-byte Confluent frame, leaving the raw AVRO body
+     * — what a producer using the wrong serializer would actually ship. The whole
+     * frame goes, not just the magic byte: the schema-id bytes begin with 0x00,
+     * so dropping the magic byte alone can still look framed. The consumer's
+     * frame check then fails locally and deterministically. (Corrupting the body
+     * under an intact frame would NOT be poison — avro-php decodes garbage into
+     * the schema's defaults without throwing.) The relay's contract is bytes; it
+     * cannot protect the consumer — the consumer defends itself.
      */
-    private function corrupt(string $payload, PayloadFormat $format): string
+    private function corrupt(string $payload, PayloadFormat $format, Tamper $tamper): string
     {
+        if (Tamper::Unframed !== $tamper) {
+            return $payload;
+        }
+
         return match ($format) {
-            PayloadFormat::Avro => "\x00\xff\xff\xff\xff" . substr($payload, 5),
+            PayloadFormat::Avro => substr($payload, 5),
             PayloadFormat::Json => 'POISON — not valid JSON, not valid AVRO',
         };
     }

@@ -15,6 +15,7 @@ use Symfony\Component\Uid\Uuid;
 use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
+use Workshop\App\Outbox\Tamper;
 use Workshop\App\Producer\ErrorDemo;
 use Workshop\App\Producer\MessageCatalog;
 
@@ -55,7 +56,8 @@ final class OutboxPlaceCommand extends Command
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between writes; default: 10', '10')
             ->addOption('fail', null, InputOption::VALUE_NONE, 'Crash each transaction right before COMMIT — the rollback beat: afterwards neither the order row nor the outbox row exists')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Payload encoding: json (envelope as JSON text) | avro (Confluent-framed bytes against the registered schemas — must match outbox:setup --format)', 'json')
-            ->addOption('poison', null, InputOption::VALUE_REQUIRED, 'Block 7: corrupt this many randomly-chosen placements (of --count) into poison — headers stay valid, the body becomes undecodable. Only with --message-name error.demo and --format avro', '0');
+            ->addOption('poison', null, InputOption::VALUE_REQUIRED, 'Block 7: strip the Confluent frame from this many randomly-chosen placements (of --count) — raw AVRO bytes, as a producer using the wrong serializer would ship; the consumer can never decode them. Only with --message-name error.demo and --format avro', '0')
+            ->addOption('headerless', null, InputOption::VALUE_REQUIRED, 'Block 7: ship this many randomly-chosen placements (of --count) WITHOUT the message-name header — the payload stays perfectly valid AVRO, but the envelope convention is broken and the record can never be routed. Only with --message-name error.demo and --format avro', '0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -75,6 +77,7 @@ final class OutboxPlaceCommand extends Command
         }
 
         $poison = Input::int($input, 'poison');
+        $headerless = Input::int($input, 'headerless');
 
         if ($count < 1) {
             $output->writeln('<error>--count must be >= 1.</error>');
@@ -92,21 +95,21 @@ final class OutboxPlaceCommand extends Command
 
             return Command::INVALID;
         }
-        if ($poison < 0 || $poison > $count) {
-            $output->writeln('<error>--poison must be between 0 and --count.</error>');
+        if ($poison < 0 || $headerless < 0 || $poison + $headerless > $count) {
+            $output->writeln('<error>--poison and --headerless must be >= 0 and together at most --count.</error>');
 
             return Command::INVALID;
         }
-        // Containment: poison can only ever land in the dedicated error-demo
-        // topic family, and only as AVRO — the JSON outbox column would reject
-        // corrupted bytes at INSERT, a confusing failure instead of a demo.
-        if ($poison > 0 && self::ERROR_DEMO !== $pin) {
-            $output->writeln('<error>--poison requires --message-name error.demo — injected poison must never land in the order topics.</error>');
+        // Containment: injected failures can only ever land in the dedicated
+        // error-demo topic family, and only as AVRO — the demo lane ships real
+        // wire bytes, and the JSON outbox column would make a confusing failure.
+        if ($poison + $headerless > 0 && self::ERROR_DEMO !== $pin) {
+            $output->writeln('<error>--poison/--headerless require --message-name error.demo — injected failures must never land in the order topics.</error>');
 
             return Command::INVALID;
         }
-        if ($poison > 0 && PayloadFormat::Avro !== $format) {
-            $output->writeln('<error>--poison requires --format avro (provision with: outbox:setup --fresh --format avro).</error>');
+        if ($poison + $headerless > 0 && PayloadFormat::Avro !== $format) {
+            $output->writeln('<error>--poison/--headerless require --format avro (provision with: outbox:setup --fresh --format avro).</error>');
 
             return Command::INVALID;
         }
@@ -114,13 +117,14 @@ final class OutboxPlaceCommand extends Command
         $names = null !== $pin ? [$pin] : self::STATE_CHANGING;
         $orderIds = $this->orderPool($poolSize);
 
-        // Which of the $count placements get corrupted — chosen up front so the
-        // poison is randomly distributed through the batch, not bunched at the end.
-        $poisonAt = $this->poisonPositions($count, $poison);
+        // Which placements get which tamper — both sets chosen up front, disjoint,
+        // so the failures scatter randomly through the batch instead of bunching.
+        $tamperAt = $this->tamperPositions($count, $poison, $headerless);
 
         $placed = 0;
         $rolledBack = 0;
         $poisoned = 0;
+        $stripped = 0;
 
         for ($i = 0; $i < $count; ++$i) {
             $name = $names[array_rand($names)];
@@ -128,10 +132,10 @@ final class OutboxPlaceCommand extends Command
             $message = $isErrorDemo
                 ? ErrorDemo::create('err-' . substr(Uuid::v4()->toRfc4122(), 0, 8), $i + 1)
                 : $this->catalog->build($name, $orderIds[array_rand($orderIds)]);
-            $corrupt = isset($poisonAt[$i]);
+            $tamper = $tamperAt[$i] ?? Tamper::None;
 
             try {
-                $this->placer->place($message, $fail, $format, $corrupt);
+                $this->placer->place($message, $fail, $format, $tamper);
             } catch (SimulatedCrash) {
                 ++$rolledBack;
                 $output->writeln(sprintf('<comment>✗ rolled back</comment> %s key=%s — crashed before COMMIT, so the order write AND the outbox row vanished together', $name, $message->partitionKey()));
@@ -154,11 +158,19 @@ final class OutboxPlaceCommand extends Command
             }
 
             ++$placed;
-            if ($corrupt) {
-                ++$poisoned;
-                $output->writeln(sprintf('placed <fg=red>%s ☠ POISONED</> key=%s → outbox id=%s (unpublished) — headers valid, body corrupted', $name, $message->partitionKey(), $message->eventId()));
-            } else {
-                $output->writeln(sprintf('placed <info>%s</info> key=%s → outbox id=%s (unpublished)', $name, $message->partitionKey(), $message->eventId()));
+            switch ($tamper) {
+                case Tamper::Unframed:
+                    ++$poisoned;
+                    $output->writeln(sprintf('placed <fg=red>%s ☠ POISONED</> key=%s → outbox id=%s (unpublished) — raw AVRO without the Confluent frame, as the wrong serializer would ship it', $name, $message->partitionKey(), $message->eventId()));
+
+                    break;
+                case Tamper::Headerless:
+                    ++$stripped;
+                    $output->writeln(sprintf('placed <fg=red>%s ☠ HEADERLESS</> key=%s → outbox id=%s (unpublished) — payload valid, but it will ship without the message-name header', $name, $message->partitionKey(), $message->eventId()));
+
+                    break;
+                default:
+                    $output->writeln(sprintf('placed <info>%s</info> key=%s → outbox id=%s (unpublished)', $name, $message->partitionKey(), $message->eventId()));
             }
 
             if ($intervalMs > 0 && $i < $count - 1) {
@@ -172,30 +184,47 @@ final class OutboxPlaceCommand extends Command
             return Command::SUCCESS;
         }
 
+        $injected = [];
+        if ($poisoned > 0) {
+            $injected[] = sprintf('%d unframed', $poisoned);
+        }
+        if ($stripped > 0) {
+            $injected[] = sprintf('%d headerless', $stripped);
+        }
+
         $output->writeln(sprintf(
             '<info>done</info> — placed %d event(s)%s in the outbox. Kafka was never contacted: publish them with a relay (outbox:relay, or the Debezium connector).',
             $placed,
-            $poisoned > 0 ? sprintf(' (%d poisoned, randomly placed)', $poisoned) : '',
+            [] !== $injected ? sprintf(' (%s, randomly placed)', implode(', ', $injected)) : '',
         ));
 
         return Command::SUCCESS;
     }
 
     /**
-     * Pick which $poison of the $count placements get corrupted — a random,
-     * order-preserving sample so the poison scatters through the batch.
+     * Assign tampers to random placement positions — one disjoint random sample
+     * for both kinds, split between them, so the injected failures scatter
+     * through the batch instead of bunching at the end.
      *
-     * @return array<int, true> set of zero-based placement positions
+     * @return array<int, Tamper> zero-based placement position => tamper kind
      */
-    private function poisonPositions(int $count, int $poison): array
+    private function tamperPositions(int $count, int $poison, int $headerless): array
     {
-        if ($poison < 1) {
+        $total = $poison + $headerless;
+        if ($total < 1) {
             return [];
         }
 
-        $positions = (array) array_rand(array_fill(0, $count, true), $poison);
+        $positions = (array) array_rand(array_fill(0, $count, true), $total);
+        $positions = array_map(intval(...), $positions);
+        shuffle($positions);
 
-        return array_fill_keys(array_map(intval(...), $positions), true);
+        $tampers = [];
+        foreach ($positions as $index => $position) {
+            $tampers[$position] = $index < $poison ? Tamper::Unframed : Tamper::Headerless;
+        }
+
+        return $tampers;
     }
 
     /**

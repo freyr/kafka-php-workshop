@@ -13,7 +13,8 @@ final class FailureModeSwitchTest extends TestCase
     public function testEnabledReadsTheFlagRow(): void
     {
         $connection = $this->createMock(Connection::class);
-        $connection->method('fetchOne')
+        $connection->expects(self::once())
+            ->method('fetchOne')
             ->with(self::stringContains('runtime_flags'), ['transient-failure'])
             ->willReturn('1');
 
@@ -22,7 +23,7 @@ final class FailureModeSwitchTest extends TestCase
 
     public function testAMissingRowMeansDisabled(): void
     {
-        $connection = $this->createMock(Connection::class);
+        $connection = $this->createStub(Connection::class);
         $connection->method('fetchOne')->willReturn(false);
 
         self::assertFalse(new FailureModeSwitch($connection)->enabled());

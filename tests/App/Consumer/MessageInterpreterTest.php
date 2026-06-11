@@ -186,6 +186,30 @@ final class MessageInterpreterTest extends TestCase
         );
     }
 
+    public function testPoisonGateThrowsOnAMissingMessageNameHeader(): void
+    {
+        $this->expectException(PoisonMessageException::class);
+        $this->expectExceptionMessageMatches('/no message-name header/');
+
+        $this->interpreter(self::ENVELOPE)->decode(
+            $this->message([
+                'event-id' => 'x',
+            ]),
+            poisonGate: true,
+        );
+    }
+
+    public function testWithoutThePoisonGateAMissingMessageNameStaysANullSkip(): void
+    {
+        $decoded = $this->interpreter(self::ENVELOPE)->decode(
+            $this->message([
+                'event-id' => 'x',
+            ]),
+        );
+
+        self::assertNull($decoded, 'tolerant consumers keep skipping convention-less records');
+    }
+
     public function testPoisonGateStillSkipsAnUnroutedNameSilently(): void
     {
         $decoded = $this->throwingInterpreter()->decode(

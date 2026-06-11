@@ -11,6 +11,7 @@ use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\OutboxRepository;
 use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
+use Workshop\App\Outbox\Tamper;
 use Workshop\App\Producer\ErrorDemo;
 use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageNameResolver;
@@ -114,11 +115,11 @@ final class OutboxPlacerTest extends TestCase
         self::assertSame('error.demo', $statements[0][1]['event_type']);
     }
 
-    public function testPoisonBreaksTheSchemaReferenceNotTheBody(): void
+    public function testUnframedTamperStripsTheConfluentFrameNotTheBody(): void
     {
         $statements = [];
 
-        $connection = $this->createMock(Connection::class);
+        $connection = $this->createStub(Connection::class);
         $connection->method('transactional')
             ->willReturnCallback(static fn (\Closure $func): mixed => $func());
         $connection->method('executeStatement')
@@ -128,12 +129,33 @@ final class OutboxPlacerTest extends TestCase
                 return 1;
             });
 
-        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, poison: true);
+        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, Tamper::Unframed);
 
         $payload = $statements[0][1]['payload'];
         self::assertIsString($payload);
-        self::assertSame("\x00\xff\xff\xff\xff", substr($payload, 0, 5), 'the magic byte survives but the schema id becomes one the registry will never hold — a deterministic 404 on decode');
-        self::assertSame('ED-AVRO', substr($payload, 5), 'the body is untouched; the poison is the broken schema reference');
+        self::assertSame('ED-AVRO', $payload, 'the whole 5-byte Confluent frame is gone — raw AVRO, as the wrong serializer would ship it; the consumer\'s frame check fails deterministically');
+        self::assertSame('error.demo', $statements[0][1]['event_type'], 'the headers convention is intact — only the framing is broken');
+    }
+
+    public function testHeaderlessTamperKeepsThePayloadButDropsTheEventType(): void
+    {
+        $statements = [];
+
+        $connection = $this->createStub(Connection::class);
+        $connection->method('transactional')
+            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
+        $connection->method('executeStatement')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
+                $statements[] = [$sql, $params];
+
+                return 1;
+            });
+
+        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, Tamper::Headerless);
+
+        self::assertSame("\x00FRAMED-AVRO", $statements[0][1]['payload'], 'the payload stays perfectly valid framed AVRO');
+        self::assertSame('', $statements[0][1]['event_type'], 'no event type → the relay ships the record without the message-name header — the convention contract is broken');
+        self::assertSame('ErrorDemo', $statements[0][1]['aggregate_type'], 'routing to the dedicated topic family still works — that comes from the aggregate, not the header');
     }
 
     public function testCrashBeforeCommitEscapesTheTransaction(): void

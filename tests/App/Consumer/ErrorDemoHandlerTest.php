@@ -36,7 +36,7 @@ final class ErrorDemoHandlerTest extends TestCase
 
     private function handler(bool $failureMode, ConsoleWriter $console): ErrorDemoHandler
     {
-        $connection = $this->createMock(Connection::class);
+        $connection = $this->createStub(Connection::class);
         $connection->method('fetchOne')->willReturn($failureMode ? 1 : false);
 
         return new ErrorDemoHandler(new FailureModeSwitch($connection), $console);
