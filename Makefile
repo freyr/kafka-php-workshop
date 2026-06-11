@@ -15,13 +15,14 @@ destroy: ## stop containers and drop all volumes (wipes topics, schemas, and the
 recreate: destroy create ## full rebuild from scratch: destroy + create (create provisions everything)
 
 ##@ Provisioning
-setup: ## provision everything, idempotently: composer vendor, every workshop topic, AVRO schemas, consumer + outbox tables
+setup: ## provision everything, idempotently: composer vendor, every workshop topic, AVRO schemas, consumer + outbox + catalog tables, and the Block 9 connector pair
 	docker compose run --rm php composer install
 	bin/kafka-setup
 	docker compose run --rm php php bin/console kafka:schema:register --all
 	docker compose run --rm php bin/console kafka:consume:setup
 	docker compose run --rm php bin/console outbox:setup
 	docker compose run --rm php bin/console catalog:setup
+	bin/catalog-register
 
 teardown: ## delete every workshop topic created by setup (idempotent; removes the Debezium connector first)
 	-@bin/debezium-delete
