@@ -44,6 +44,11 @@ final readonly class MessageConsumer
      * @param list<string>                  $topics
      * @param callable(Message): void       $handler
      * @param (\Closure(string): void)|null $narrate
+     * @param \Closure|null                 $onSignal also invoked on SIGINT/SIGTERM —
+     *                                                lets a handler that loops or
+     *                                                sleeps (the --errors retry path)
+     *                                                observe the stop request the
+     *                                                loop's own flag tracks
      *
      * @return int the number of messages processed
      *
@@ -56,13 +61,17 @@ final readonly class MessageConsumer
         CommitPolicy $policy,
         ?\Closure $narrate = null,
         int $pauseMs = 0,
+        ?\Closure $onSignal = null,
     ): int {
         $this->consumer->subscribe($topics);
 
         $running = true;
         pcntl_async_signals(true);
-        $stop = static function () use (&$running): void {
+        $stop = static function () use (&$running, $onSignal): void {
             $running = false;
+            if (null !== $onSignal) {
+                $onSignal();
+            }
         };
         pcntl_signal(SIGTERM, $stop);
         pcntl_signal(SIGINT, $stop);
@@ -119,7 +128,11 @@ final readonly class MessageConsumer
                         break;
 
                     case RD_KAFKA_RESP_ERR__TIMED_OUT:
-                        if ($limits->stopOnIdle) {
+                        // An empty poll only means "drained" once the group has
+                        // actually assigned partitions: before the first rebalance
+                        // completes EVERY poll times out, and stopping there would
+                        // end a --drain run that never read anything.
+                        if ($limits->stopOnIdle && [] !== $this->consumer->getAssignment()) {
                             $running = false;
                         }
 

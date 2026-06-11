@@ -7,16 +7,20 @@ help: ## show this help
 		/^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
 ##@ Stack lifecycle
-create: ## start kafka, schema registry, kafka-ui (detached); php is profile-gated
-	docker compose up -d
-destroy: ## stop containers and drop the kafka-data volume (wipes topics)
+create: ## start the stack (waits for healthchecks) and provision everything: vendor, topics, AVRO schemas, DB tables
+	docker compose up -d --wait
+	$(MAKE) setup
+destroy: ## stop containers and drop all volumes (wipes topics, schemas, and the database)
 	docker compose down -v
-recreate: destroy create setup ## destroy + create + provision topics
+recreate: destroy create ## full rebuild from scratch: destroy + create (create provisions everything)
 
-##@ Topic provisioning
-setup: ## create every workshop topic across all blocks (idempotent)
+##@ Provisioning
+setup: ## provision everything, idempotently: composer vendor, every workshop topic, AVRO schemas, consumer + outbox tables
+	docker compose run --rm php composer install
 	bin/kafka-setup
 	docker compose run --rm php php bin/console kafka:schema:register --all
+	docker compose run --rm php bin/console kafka:consume:setup
+	docker compose run --rm php bin/console outbox:setup
 
 teardown: ## delete every workshop topic created by setup (idempotent; removes the Debezium connector first)
 	-@bin/debezium-delete
@@ -97,6 +101,27 @@ enqueue-relay: ## run the enqueue outbox relay until Ctrl+C (ONCE=1 to drain the
 	docker compose run --rm php bin/console enqueue:outbox:relay $(if $(ONCE),--once,)
 enqueue-consume: ## consume through the message bus with dedup always on (TOPIC=... GROUP=... MAX=n)
 	docker compose run --rm php bin/console enqueue:consume $(if $(TOPIC),$(TOPIC),) $(if $(GROUP),--group $(GROUP),) $(if $(MAX),--max $(MAX),)
+
+##@ Error handling (Block 7 — error.demo topic family, DLQ + retry)
+errors-setup: ## provision the Block 7 demo: ensure topics, re-provision the outbox for AVRO (the demo lane ships real wire bytes), ensure the runtime_flags table
+	bin/kafka-setup
+	docker compose run --rm php bin/console outbox:setup --fresh --format avro
+	docker compose run --rm php bin/console kafka:consume:setup
+errors-produce: ## place error.demo events through the outbox with poison scattered in (COUNT=20 POISON=3), then relay them to the main topic
+	docker compose run --rm php bin/console outbox:place --message-name error.demo --format avro --count $(or $(COUNT),20) --poison $(or $(POISON),3)
+	docker compose run --rm php bin/console outbox:relay --once
+errors-consume-main: ## the main lane: 3 short retries, then off-load; poison/permanent → DLQ; breaker fails fast. Ctrl+C to stop
+	docker compose run --rm php bin/console kafka:consume enet.ecommerce.outbox.ErrorDemo --errors main --profile modern --idempotent --group errors-main -v
+errors-consume-slow: ## the slow lane: drain the .retry topic with patient unbounded retries; breaker pauses. Ctrl+C to stop
+	docker compose run --rm php bin/console kafka:consume enet.ecommerce.outbox.ErrorDemo.retry --errors slow --profile modern --idempotent --group errors-slow -v
+failure-on: ## flip the transient-failure switch ON — the running consumer starts throwing from its handler
+	docker compose run --rm php bin/console kafka:failure-mode on
+failure-off: ## flip the transient-failure switch OFF — retries start succeeding again
+	docker compose run --rm php bin/console kafka:failure-mode off
+dlq-inspect: ## triage the DLQ: print every dead-lettered message's diagnostic headers (read-only)
+	docker compose run --rm php bin/console kafka:dlq:inspect
+dlq-replay: ## re-publish DLQ messages to their original topic (DRY=1 to preview); replay is dedup-safe
+	docker compose run --rm php bin/console kafka:dlq:replay $(if $(DRY),--dry-run,)
 
 ##@ Debezium (Block 6 CDC outbox)
 debezium-register: ## register the connector for the JSON-payload outbox (EventRouter expands the envelope)

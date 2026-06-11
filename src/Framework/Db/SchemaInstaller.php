@@ -15,6 +15,9 @@ use Doctrine\DBAL\Connection;
  *  - orders: the read-model projection the handler upserts from each order event.
  *  - processed_events: the dedup ledger keyed by the event's UUIDv7 event_id; the
  *    primary key is the hard idempotency guard behind the --commit=idempotent flow.
+ *  - runtime_flags: the Block 7 demo-control store (kafka:failure-mode flips a row,
+ *    ErrorDemoHandler consults it per message). MySQL is the one shared store every
+ *    ephemeral container reaches, so a flag here crosses process boundaries.
  */
 final readonly class SchemaInstaller
 {
@@ -34,8 +37,9 @@ final readonly class SchemaInstaller
     {
         $this->connection->executeStatement('DROP TABLE IF EXISTS orders');
         $this->connection->executeStatement('DROP TABLE IF EXISTS processed_events');
+        $this->connection->executeStatement('DROP TABLE IF EXISTS runtime_flags');
 
-        return ['orders', 'processed_events'];
+        return ['orders', 'processed_events', 'runtime_flags'];
     }
 
     /**
@@ -65,6 +69,14 @@ final readonly class SchemaInstaller
             ) ENGINE=InnoDB
             SQL);
 
-        return ['orders', 'processed_events'];
+        $this->connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS runtime_flags (
+              name       VARCHAR(64) NOT NULL PRIMARY KEY,
+              enabled    TINYINT(1)  NOT NULL DEFAULT 0,
+              updated_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB
+            SQL);
+
+        return ['orders', 'processed_events', 'runtime_flags'];
     }
 }

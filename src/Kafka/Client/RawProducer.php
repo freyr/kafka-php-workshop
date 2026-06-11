@@ -18,7 +18,7 @@ use Workshop\Kafka\Callback\DeliveryTally;
  * every record in the batch was actually acked, the precondition for marking
  * outbox rows published.
  */
-final class RawProducer
+final class RawProducer implements BytesProducer
 {
     /**
      * @var array<string, ProducerTopic>

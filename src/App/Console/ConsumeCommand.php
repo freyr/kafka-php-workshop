@@ -13,14 +13,22 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Workshop\App\Consumer\ConsoleWriter;
 use Workshop\App\Consumer\ConsumedMessage;
 use Workshop\App\Consumer\DecodedRecord;
+use Workshop\App\Consumer\ErrorDemoDto;
+use Workshop\App\Consumer\ErrorRouter;
 use Workshop\App\Consumer\LatestSchemaResolver;
 use Workshop\App\Consumer\MessageBus;
 use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\OrderEvent;
 use Workshop\Kafka\Client\ConsumerFactory;
+use Workshop\Kafka\Client\ProducerFactory;
+use Workshop\Kafka\Runtime\CircuitBreaker;
+use Workshop\Kafka\Runtime\ConsumerInterrupted;
 use Workshop\Kafka\Runtime\ConsumerProfile;
+use Workshop\Kafka\Runtime\ErrorPolicy;
 use Workshop\Kafka\Runtime\OffsetReset;
+use Workshop\Kafka\Runtime\PoisonMessageException;
 use Workshop\Kafka\Runtime\RunLimits;
+use Workshop\Kafka\Runtime\TransientException;
 
 #[AsCommand(
     name: 'kafka:consume',
@@ -30,6 +38,7 @@ final class ConsumeCommand extends Command
 {
     public function __construct(
         private readonly ConsumerFactory $consumers,
+        private readonly ProducerFactory $producers,
         private readonly MessageInterpreter $interpreter,
         private readonly MessageBus $bus,
         private readonly ConsoleWriter $console,
@@ -51,7 +60,8 @@ final class ConsumeCommand extends Command
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between messages (throttle); default 0', '0')
             ->addOption('max', null, InputOption::VALUE_REQUIRED, 'Stop after this many messages (0 = no message cap)', '0')
             ->addOption('ttl', null, InputOption::VALUE_REQUIRED, 'Max lifetime in ms: stop after the consumer has lived this long, regardless of traffic (the time analogue of --max). Omit to run unbounded')
-            ->addOption('drain', null, InputOption::VALUE_NONE, 'Stop at the first empty poll — read the backlog until drained, then exit (batch mode). Without it the consumer tails continuously, stopping only on --max, --ttl, or Ctrl-C');
+            ->addOption('drain', null, InputOption::VALUE_NONE, 'Stop at the first empty poll — read the backlog until drained, then exit (batch mode). Without it the consumer tails continuously, stopping only on --max, --ttl, or Ctrl-C')
+            ->addOption('errors', null, InputOption::VALUE_REQUIRED, 'Error-handling lane (Block 7): off (default — tolerant null-skips, no routing) | main (3 in-process retries @ 1s/2s/4s, then off-load to <topic>.retry; poison/permanent → <topic>.dlq; breaker fails fast) | slow (unbounded retries, 5s doubling capped 60s; breaker pauses — for consuming the .retry topic)', ErrorPolicy::Off->value);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -63,6 +73,7 @@ final class ConsumeCommand extends Command
         try {
             $offsetReset = OffsetReset::fromOption(Input::string($input, 'from'));
             $lane = ConsumerProfile::fromOption(Input::string($input, 'profile'));
+            $errors = ErrorPolicy::fromOption(Input::string($input, 'errors'));
         } catch (\InvalidArgumentException $e) {
             $output->writeln('<error>' . $e->getMessage() . '</error>');
 
@@ -86,6 +97,19 @@ final class ConsumeCommand extends Command
         }
         $latestReader = 'latest' === $readerMode;
 
+        // The error lanes route through the bus and commit after routing, which
+        // neither the inspect-only profile nor the view-only --print ever do.
+        if ($errors->enabled() && $lane->inspectsOnly()) {
+            $output->writeln('<error>--errors needs a handling profile (default | modern) — the ephemeral inspector never decodes or dispatches.</error>');
+
+            return Command::INVALID;
+        }
+        if ($errors->enabled() && $print) {
+            $output->writeln('<error>--errors and --print are mutually exclusive — --print bypasses the bus the error lanes wrap.</error>');
+
+            return Command::INVALID;
+        }
+
         // Ephemeral is the throwaway inspector: it always reads the whole log from
         // the beginning and joins a unique, single-use group, so a committed offset
         // never enters the picture. The other lanes honor --from and a stable group.
@@ -102,7 +126,7 @@ final class ConsumeCommand extends Command
         // fixed in MessageConsumer and is deliberately not configurable here.
 
         $output->writeln(sprintf(
-            '<comment>topic=%s group=%s profile=%s from=%s reader=%s idempotent=%s ttl=%s mode=%s%s</comment>',
+            '<comment>topic=%s group=%s profile=%s from=%s reader=%s idempotent=%s ttl=%s mode=%s%s%s</comment>',
             $topic,
             $group,
             $lane->profileName(),
@@ -112,6 +136,7 @@ final class ConsumeCommand extends Command
             null !== $ttlMs ? $ttlMs . 'ms' : '∞',
             $drain ? 'drain (stop on idle)' : 'tail',
             $print ? ' print=fields' : '',
+            $errors->enabled() ? ' errors=' . $errors->value : '',
         ));
 
         $narrate = $output->isVerbose()
@@ -133,27 +158,77 @@ final class ConsumeCommand extends Command
         $tally = [
             'handled' => 0,
             'skipped' => 0,
+            'retried' => 0,
+            'offloaded' => 0,
+            'dead-lettered' => 0,
         ];
 
-        $messageHandler = $lane->inspectsOnly()
-            ? $this->readOnlyHandler($output, $tally)
-            : $this->dispatchingHandler($idempotent, $latestReader, $print, $output, $tally);
+        // The abort flag the error lanes' retry loops poll: the run loop's own
+        // signal handler flips it (via $onSignal), so a Ctrl+C mid-retry breaks
+        // the loop instead of waiting out a 60s backoff.
+        $aborted = false;
+        $onSignal = $errors->enabled()
+            ? function () use (&$aborted): void {
+                $aborted = true;
+            }
+        : null;
 
-        $consumer->run(
-            [$topic],
-            $messageHandler,
-            new RunLimits(maxMessages: $max, maxRuntimeMs: $ttlMs ?? 0, stopOnIdle: $drain),
-            $commitPolicy,
-            $narrate,
-            $pauseMs,
-        );
+        $messageHandler = match (true) {
+            $lane->inspectsOnly() => $this->readOnlyHandler($output, $tally),
+            $errors->enabled() => $this->errorHandlingHandler($errors, $topic, $idempotent, $latestReader, $output, $tally, $aborted),
+            default => $this->dispatchingHandler($idempotent, $latestReader, $print, $output, $tally),
+        };
+
+        try {
+            $consumer->run(
+                [$topic],
+                $messageHandler,
+                new RunLimits(maxMessages: $max, maxRuntimeMs: $ttlMs ?? 0, stopOnIdle: $drain),
+                $commitPolicy,
+                $narrate,
+                $pauseMs,
+                $onSignal,
+            );
+        } catch (ConsumerInterrupted) {
+            // Returning from the handler would have committed an unhandled
+            // message; the exception path leaves the offset uncommitted instead.
+            $output->writeln('');
+            $output->writeln('<comment>interrupted mid-retry — offset uncommitted, the message redelivers on the next run</comment>');
+            $this->report($lane, $errors, $tally, $output);
+
+            return Command::SUCCESS;
+        }
 
         $output->writeln('');
-        $output->writeln($lane->inspectsOnly()
-            ? sprintf('<info>done</info> — inspected %d message(s)', $tally['handled'])
-            : sprintf('<info>done</info> — handled %d, skipped %d', $tally['handled'], $tally['skipped']));
+        $this->report($lane, $errors, $tally, $output);
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * @param array{handled: int, skipped: int, retried: int, offloaded: int, dead-lettered: int} $tally
+     */
+    private function report(ConsumerProfile $lane, ErrorPolicy $errors, array $tally, OutputInterface $output): void
+    {
+        if ($lane->inspectsOnly()) {
+            $output->writeln(sprintf('<info>done</info> — inspected %d message(s)', $tally['handled']));
+
+            return;
+        }
+        if ($errors->enabled()) {
+            $output->writeln(sprintf(
+                '<info>done</info> — handled %d, skipped %d, retried %d, off-loaded %d, dead-lettered %d',
+                $tally['handled'],
+                $tally['skipped'],
+                $tally['retried'],
+                $tally['offloaded'],
+                $tally['dead-lettered'],
+            ));
+
+            return;
+        }
+
+        $output->writeln(sprintf('<info>done</info> — handled %d, skipped %d', $tally['handled'], $tally['skipped']));
     }
 
     /**
@@ -166,7 +241,7 @@ final class ConsumeCommand extends Command
      * $latestReader resolves each record against its subject's latest schema before
      * decoding (vs its own writer schema), so the two can be compared on one log.
      *
-     * @param array{handled: int, skipped: int} $tally
+     * @param array{handled: int, skipped: int, retried: int, offloaded: int, dead-lettered: int} $tally
      *
      * @return \Closure(\RdKafka\Message): void
      */
@@ -225,6 +300,162 @@ final class ConsumeCommand extends Command
     }
 
     /**
+     * The Block 7 pipeline: decode with the poison gate armed, then dispatch under
+     * the policy's retry budget and circuit breaker, routing every failure off the
+     * partition — poison and permanent failures to <topic>.dlq, exhausted (or
+     * breaker-fail-fast) transients to <topic>.retry. The closure always RETURNS
+     * after routing (never rethrows a handling failure), so the run loop commits
+     * the offset and the partition advances — the cardinal rule. The only
+     * exception out of here is ConsumerInterrupted: a Ctrl+C mid-retry must NOT
+     * commit, so it travels as a throw.
+     *
+     * Narration writes straight to $output (not the -v narrator): watching the
+     * routing decisions IS the demo.
+     *
+     * @param array{handled: int, skipped: int, retried: int, offloaded: int, dead-lettered: int} $tally
+     *
+     * @return \Closure(\RdKafka\Message): void
+     */
+    private function errorHandlingHandler(
+        ErrorPolicy $policy,
+        string $topic,
+        bool $idempotent,
+        bool $latestReader,
+        OutputInterface $output,
+        array &$tally,
+        bool &$aborted,
+    ): \Closure {
+        $router = new ErrorRouter($this->producers->createRaw(
+            'producer.dlq',
+            $output->isVerbose() ? static fn (string $line) => $output->writeln('  <comment>' . $line . '</comment>') : null,
+        ));
+        $breaker = new CircuitBreaker($policy->breakerThreshold(), $policy->breakerCooldownMs());
+
+        return function (\RdKafka\Message $message) use ($policy, $router, $breaker, $topic, $idempotent, $latestReader, $output, &$tally, &$aborted): void {
+            try {
+                $reader = $latestReader && '' !== ($name = $this->header($message, 'message-name'))
+                    ? $this->readers->forMessageName($name)
+                    : null;
+                $decoded = $this->interpreter->decode($message, $reader, poisonGate: true);
+            } catch (PoisonMessageException $e) {
+                $destination = $router->deadLetter($message, $e, ErrorRouter::REASON_POISON, $topic);
+                $output->writeln(sprintf('  <fg=red>☠ poison</> partition=%d offset=%d → <comment>%s</comment> (%s)', $message->partition, $message->offset, $destination, $e->getMessage()));
+                ++$tally['dead-lettered'];
+
+                return; // routed — the run loop commits, the partition advances
+            }
+            if (null === $decoded) {
+                ++$tally['skipped'];
+
+                return; // not a type this consumer handles — tolerate, as ever
+            }
+
+            $consumed = $this->interpreter->denormalize($decoded);
+            if (null === $consumed) {
+                ++$tally['skipped'];
+
+                return; // DTO-hydration drift stays a skip (the Block 4 contract)
+            }
+
+            $attempt = 0;
+            $max = $policy->maxAttempts();
+
+            while (true) {
+                if ($aborted) {
+                    throw new ConsumerInterrupted('signal received mid-retry');
+                }
+
+                $nowMs = $this->nowMs();
+                if (! $breaker->allowsAttempt($nowMs)) {
+                    if ($policy->pausesWhenOpen()) {
+                        // Slow lane: the topic's job is to wait — pause out the
+                        // cooldown, then the next iteration probes half-open.
+                        $remaining = $breaker->remainingCooldownMs($nowMs);
+                        $output->writeln(sprintf('  <fg=yellow>◌ breaker OPEN</> — pausing %.1fs before the half-open probe', $remaining / 1000));
+                        $this->sleepAbortAware($remaining, $aborted);
+
+                        continue;
+                    }
+
+                    // Main lane: fail fast — no attempt, no in-process retries; the
+                    // message moves off the hot path immediately and the struggling
+                    // dependency stops being hammered.
+                    $destination = $router->offloadToRetry($message, new TransientException('circuit breaker open — failing fast'), $topic);
+                    $output->writeln(sprintf('  <fg=yellow>↯ breaker OPEN</> — fail fast: %s → <comment>%s</comment> (x-retry-count=%d)', $this->describe($consumed), $destination, $router->retryCount($message) + 1));
+                    ++$tally['offloaded'];
+
+                    return;
+                }
+
+                if ($breaker->isHalfOpen($nowMs)) {
+                    $output->writeln('  <fg=yellow>◌ breaker HALF-OPEN</> — probing with the next message');
+                }
+
+                ++$attempt;
+
+                try {
+                    $this->bus->dispatch($consumed, $idempotent);
+                    if ($breaker->onSuccess()) {
+                        $output->writeln('  <info>● breaker CLOSED</info> — probe succeeded');
+                    }
+                    $output->writeln(sprintf('  <info>✓</info> %s%s', $this->describe($consumed), $attempt > 1 ? sprintf(' (succeeded on attempt %d)', $attempt) : ''));
+                    ++$tally['handled'];
+
+                    return;
+                } catch (TransientException $e) {
+                    if ($breaker->onTransientFailure($this->nowMs())) {
+                        $output->writeln(sprintf('  <fg=yellow>↯ breaker OPEN</> — %d consecutive transient failures (cooldown %.1fs)', max($breaker->consecutiveFailures(), $policy->breakerThreshold()), $policy->breakerCooldownMs() / 1000));
+                    }
+
+                    if (null !== $max && $attempt >= $max) {
+                        $destination = $router->offloadToRetry($message, $e, $topic);
+                        $output->writeln(sprintf('  <fg=yellow>↻ transient persisted</> after %d attempts: %s → <comment>%s</comment> (x-retry-count=%d)', $attempt, $this->describe($consumed), $destination, $router->retryCount($message) + 1));
+                        ++$tally['offloaded'];
+
+                        return;
+                    }
+
+                    if ($breaker->isOpen()) {
+                        continue; // the open-breaker branch decides what happens next
+                    }
+
+                    $delayMs = $policy->retryDelayMs($attempt);
+                    $output->writeln(sprintf('  <fg=yellow>↻ transient</> (attempt %d%s) %s — retrying in %.1fs', $attempt, null !== $max ? '/' . $max : '', $e->getMessage(), $delayMs / 1000));
+                    ++$tally['retried'];
+                    $this->sleepAbortAware($delayMs, $aborted);
+                } catch (\Throwable $e) {
+                    // Anything not explicitly transient is permanent: retrying an
+                    // unknown error gambles with partition liveness, and the DLQ
+                    // is recoverable by replay.
+                    $destination = $router->deadLetter($message, $e, ErrorRouter::REASON_PERMANENT, $topic);
+                    $output->writeln(sprintf('  <fg=red>☠ permanent</> %s: %s → <comment>%s</comment>', $this->describe($consumed), $e->getMessage(), $destination));
+                    ++$tally['dead-lettered'];
+
+                    return;
+                }
+            }
+        };
+    }
+
+    /**
+     * Sleep in short slices so a SIGINT/SIGTERM (which flips $aborted via the run
+     * loop's signal handler) cuts a long backoff short instead of waiting it out.
+     */
+    private function sleepAbortAware(int $ms, bool &$aborted): void
+    {
+        $sliceMs = 200;
+        while ($ms > 0 && ! $aborted) {
+            usleep(min($ms, $sliceMs) * 1000);
+            $ms -= $sliceMs;
+        }
+    }
+
+    private function nowMs(): int
+    {
+        return intdiv(hrtime(true), 1_000_000);
+    }
+
+    /**
      * Dump a decoded record's raw business fields (metadata stripped) as indented
      * JSON — the pre-DTO wire view that makes unmapped fields and schema drift
      * visible. Independent of the handler the DTO eventually routes to.
@@ -248,7 +479,7 @@ final class ConsumeCommand extends Command
      * The readonly pipeline: print each record's name and id straight off the
      * headers — no decode, no DTO, no handler, no commit.
      *
-     * @param array{handled: int, skipped: int} $tally
+     * @param array{handled: int, skipped: int, retried: int, offloaded: int, dead-lettered: int} $tally
      *
      * @return \Closure(\RdKafka\Message): void
      */
@@ -274,13 +505,16 @@ final class ConsumeCommand extends Command
     }
 
     /**
-     * A one-line description of a consumed event for the run log: the wire name and
-     * the order it touched (every consumed DTO is keyed on an order id).
+     * A one-line description of a consumed event for the run log: the wire name
+     * plus the identity its DTO carries (order id for the order events, seq+id
+     * for the Block 7 error.demo event).
      */
     private function describe(ConsumedMessage $message): string
     {
-        $orderId = $message->dto instanceof OrderEvent ? $message->dto->orderId : '?';
-
-        return sprintf('%s order=%s', $message->name, $orderId);
+        return match (true) {
+            $message->dto instanceof OrderEvent => sprintf('%s order=%s', $message->name, $message->dto->orderId),
+            $message->dto instanceof ErrorDemoDto => sprintf('%s seq=%d id=%s', $message->name, $message->dto->seq, $message->dto->id),
+            default => sprintf('%s order=?', $message->name),
+        };
     }
 }

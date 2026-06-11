@@ -10,6 +10,7 @@ use Workshop\App\Consumer\MessageDenormalizer;
 use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\OrderCreatedDto;
 use Workshop\App\Producer\Message;
+use Workshop\Kafka\Runtime\PoisonMessageException;
 use Workshop\Kafka\Serde\MessageSerializer;
 
 final class MessageInterpreterTest extends TestCase
@@ -142,6 +143,74 @@ final class MessageInterpreterTest extends TestCase
         self::assertNull($consumed);
     }
 
+    public function testPoisonGateThrowsOnADecodeFailureOfARoutedType(): void
+    {
+        $this->expectException(PoisonMessageException::class);
+        $this->expectExceptionMessageMatches('/AVRO decode failed/');
+
+        $this->throwingInterpreter()->decode(
+            $this->message([
+                'message-name' => 'order.created',
+                'event-id' => 'x',
+            ]),
+            poisonGate: true,
+        );
+    }
+
+    public function testPoisonGateThrowsOnNonAvroBytesOfARoutedType(): void
+    {
+        $this->expectException(PoisonMessageException::class);
+        $this->expectExceptionMessageMatches('/not Confluent-framed/');
+
+        $this->interpreter(null)->decode(
+            $this->message([
+                'message-name' => 'order.created',
+                'event-id' => 'x',
+            ]),
+            poisonGate: true,
+        );
+    }
+
+    public function testPoisonGateThrowsOnAMissingEventId(): void
+    {
+        $this->expectException(PoisonMessageException::class);
+        $this->expectExceptionMessageMatches('/no resolvable event id/');
+
+        $this->interpreter([
+            'order_id' => 'ord-1',
+        ])->decode(
+            $this->message([
+                'message-name' => 'order.created',
+            ]),
+            poisonGate: true,
+        );
+    }
+
+    public function testPoisonGateStillSkipsAnUnroutedNameSilently(): void
+    {
+        $decoded = $this->throwingInterpreter()->decode(
+            $this->message([
+                'message-name' => 'somebody.elses.event',
+                'event-id' => 'x',
+            ]),
+            poisonGate: true,
+        );
+
+        self::assertNull($decoded, 'a type this consumer does not handle is never poison — shared-topic tolerance');
+    }
+
+    public function testWithoutThePoisonGateADecodeFailureStaysANullSkip(): void
+    {
+        $decoded = $this->throwingInterpreter()->decode(
+            $this->message([
+                'message-name' => 'order.created',
+                'event-id' => 'x',
+            ]),
+        );
+
+        self::assertNull($decoded, 'the tolerant default contract is unchanged');
+    }
+
     /**
      * @param array<string, mixed>|null $decoded
      */
@@ -154,6 +223,33 @@ final class MessageInterpreterTest extends TestCase
                 'order.created' => OrderCreatedDto::class,
             ]),
             $this->serializer($decoded, $unused),
+            new MessageDenormalizer(),
+        );
+    }
+
+    /**
+     * An interpreter whose serializer throws on every decode — the broken-AVRO
+     * (poison) case.
+     */
+    private function throwingInterpreter(): MessageInterpreter
+    {
+        $serializer = new class implements MessageSerializer {
+            public function encode(Message $payload): string
+            {
+                return '';
+            }
+
+            public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
+            {
+                throw new \RuntimeException('malformed body');
+            }
+        };
+
+        return new MessageInterpreter(
+            new DtoRouting([
+                'order.created' => OrderCreatedDto::class,
+            ]),
+            $serializer,
             new MessageDenormalizer(),
         );
     }

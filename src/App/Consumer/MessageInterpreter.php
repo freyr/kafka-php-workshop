@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workshop\App\Consumer;
 
+use Workshop\Kafka\Runtime\PoisonMessageException;
 use Workshop\Kafka\Serde\MessageSerializer;
 
 /**
@@ -25,6 +26,13 @@ use Workshop\Kafka\Serde\MessageSerializer;
  * records produced before the header existed. A record with no resolvable identity,
  * non-AVRO bytes, or a payload that does not fit its DTO is treated as unhandled
  * (null), never a crash: a shared-topic consumer must tolerate bytes it cannot use.
+ *
+ * With $poisonGate (kafka:consume --errors) the decode half distinguishes "not
+ * mine" from "mine but broken": an unrouted name is still a silent skip, but a
+ * ROUTED record whose bytes cannot be decoded — broken AVRO, missing Confluent
+ * framing, no resolvable event id — throws PoisonMessageException so the command
+ * can dead-letter it. The denormalize half keeps its null-skip contract either
+ * way: DTO-hydration drift is the Block 4 exercise, not poison.
  */
 final readonly class MessageInterpreter
 {
@@ -45,8 +53,11 @@ final readonly class MessageInterpreter
     /**
      * The decode half: route by name, AVRO-decode, strip metadata. Stops short of
      * the DTO so callers can inspect the raw business fields (kafka:consume --print).
+     *
+     * @throws PoisonMessageException with $poisonGate, for a routed record whose
+     *                                bytes can never decode
      */
-    public function decode(\RdKafka\Message $message, ?\AvroSchema $readerSchema = null): ?DecodedRecord
+    public function decode(\RdKafka\Message $message, ?\AvroSchema $readerSchema = null, bool $poisonGate = false): ?DecodedRecord
     {
         $name = $this->header($message, 'message-name');
         $dtoClass = '' === $name ? null : $this->routing->for($name);
@@ -59,10 +70,18 @@ final readonly class MessageInterpreter
             // gain fields added since, from their defaults); without one it decodes
             // in its own writer shape. kafka:consume --reader selects which.
             $decoded = $this->serializer->decode((string) $message->payload, $readerSchema);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            if ($poisonGate) {
+                throw new PoisonMessageException(sprintf('AVRO decode failed for routed message "%s": %s', $name, $e->getMessage()), previous: $e);
+            }
+
             return null; // genuine decode failure (poison) — tolerate, do not crash
         }
         if (! is_array($decoded)) {
+            if ($poisonGate) {
+                throw new PoisonMessageException(sprintf('Routed message "%s" carries bytes that are not Confluent-framed AVRO.', $name));
+            }
+
             return null; // not Confluent-framed AVRO (decode returned null)
         }
         /** @var array<string, mixed> $event */
@@ -70,6 +89,10 @@ final readonly class MessageInterpreter
 
         $eventId = $this->resolveEventId($message, $event);
         if ('' === $eventId) {
+            if ($poisonGate) {
+                throw new PoisonMessageException(sprintf('Routed message "%s" has no resolvable event id — it cannot be deduped, so it can never be processed safely.', $name));
+            }
+
             return null; // no identity → cannot dedup safely, treat as unhandled
         }
 

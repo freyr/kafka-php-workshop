@@ -32,3 +32,11 @@ workshop:
             topic: enet.demo.orders
             subject: com.ecommerce.demo.order_evolved
             schema: '%kafka.schema_dir%/demo/OrderEvolved.avsc'
+        # Block 7 error-handling demo — produced only through the outbox
+        # (aggregate_type=ErrorDemo), so the topic here is the relay's
+        # destination (prefix + aggregate_type), stated for the record. The
+        # route's real job is the subject + schema the AVRO encode resolves.
+        error.demo:
+            topic: enet.ecommerce.outbox.ErrorDemo
+            subject: com.ecommerce.demo.error_demo
+            schema: '%kafka.schema_dir%/demo/ErrorDemo.avsc'

@@ -11,6 +11,7 @@ use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\OutboxRepository;
 use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
+use Workshop\App\Producer\ErrorDemo;
 use Workshop\App\Producer\Message;
 use Workshop\App\Producer\MessageNameResolver;
 use Workshop\App\Producer\OrderCreated;
@@ -83,6 +84,56 @@ final class OutboxPlacerTest extends TestCase
         // Confluent-framed wire bytes, not a JSON re-encoding of the envelope.
         $outbox = $statements[1][1];
         self::assertSame("\x00FRAMED-AVRO", $outbox['payload']);
+    }
+
+    public function testErrorDemoPlacesOnlyTheOutboxRowUnderItsOwnAggregate(): void
+    {
+        $statements = [];
+
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('transactional')
+            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
+        $connection->method('executeStatement')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
+                $statements[] = [$sql, $params];
+
+                return 1;
+            });
+
+        $message = ErrorDemo::create('err-1', 4);
+
+        $this->placer($connection)->place($message, false, PayloadFormat::Avro);
+
+        // No business state to change — the error demo borrows the outbox only
+        // as its at-least-once producing vehicle.
+        self::assertCount(1, $statements);
+        self::assertStringContainsString('INSERT INTO outbox', $statements[0][0]);
+        self::assertSame('ErrorDemo', $statements[0][1]['aggregate_type']);
+        self::assertSame('err-1', $statements[0][1]['aggregate_id']);
+        self::assertSame('error.demo', $statements[0][1]['event_type']);
+    }
+
+    public function testPoisonBreaksTheSchemaReferenceNotTheBody(): void
+    {
+        $statements = [];
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('transactional')
+            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
+        $connection->method('executeStatement')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
+                $statements[] = [$sql, $params];
+
+                return 1;
+            });
+
+        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, poison: true);
+
+        $payload = $statements[0][1]['payload'];
+        self::assertIsString($payload);
+        self::assertSame("\x00\xff\xff\xff\xff", substr($payload, 0, 5), 'the magic byte survives but the schema id becomes one the registry will never hold — a deterministic 404 on decode');
+        self::assertSame('ED-AVRO', substr($payload, 5), 'the body is untouched; the poison is the broken schema reference');
     }
 
     public function testCrashBeforeCommitEscapesTheTransaction(): void

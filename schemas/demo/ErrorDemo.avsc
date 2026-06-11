@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "ErrorDemo",
+  "namespace": "com.ecommerce.demo",
+  "doc": "Block 7 error-handling demo event. Deliberately minimal: the demo is about what the consumer does when handling FAILS (poison bytes, transient handler errors), so the payload carries just enough to identify a message in the narration. Produced only through the outbox (aggregate_type=ErrorDemo) onto its dedicated topic family — never shares a topic with the order events. Self-contained schema — EventMetadata is inlined so it registers as a single subject.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
+        ]
+      }
+    },
+    {"name": "id", "type": "string", "doc": "Business identifier for the demo task; also the Kafka partition key."},
+    {"name": "seq", "type": "int", "doc": "Position in the produced batch — makes it visible which messages were applied, retried, or dead-lettered."},
+    {"name": "note", "type": "string", "doc": "Free-text label for the narration."}
+  ]
+}

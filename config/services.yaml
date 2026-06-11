@@ -66,6 +66,11 @@ services:
     Workshop\App\Consumer\OrderUpdatedHandler: ~
     Workshop\App\Consumer\OrderCancelledHandler: ~
     Workshop\App\Consumer\FieldPrintHandler: ~
+    # Block 7 — ErrorDemoHandler narrates (no projection) and throws
+    # TransientException while the failure-mode flag (runtime_flags row,
+    # toggled by kafka:failure-mode) is on.
+    Workshop\App\Consumer\ErrorDemoHandler: ~
+    Workshop\App\Consumer\FailureModeSwitch: ~
 
     # The consumer's MySQL store. ConnectionFactory turns the DATABASE_URL parameter
     # into a DBAL Connection (the single construction seam); SchemaInstaller (autowired

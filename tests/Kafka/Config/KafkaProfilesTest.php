@@ -111,6 +111,7 @@ final class KafkaProfilesTest extends TestCase
         self::assertSame([
             'producer.simple',
             'producer.idempotent',
+            'producer.dlq',
             'consumer.ephemeral',
             'consumer.default',
             'consumer.modern',

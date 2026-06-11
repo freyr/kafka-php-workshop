@@ -8,3 +8,4 @@ workshop:
         order.cancelled: Workshop\App\Consumer\OrderCancelledDto
         order.audited: Workshop\App\Consumer\OrderAuditedDto
         demo.order.evolved: Workshop\App\Consumer\OrderEvolvedDto
+        error.demo: Workshop\App\Consumer\ErrorDemoDto

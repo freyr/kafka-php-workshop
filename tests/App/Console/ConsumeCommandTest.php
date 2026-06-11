@@ -20,8 +20,10 @@ use Workshop\App\Consumer\MessageDenormalizer;
 use Workshop\App\Consumer\MessageInterpreter;
 use Workshop\App\Consumer\TransactionMiddleware;
 use Workshop\App\Producer\Message;
+use Workshop\App\Producer\MessageNameResolver;
 use Workshop\App\Producer\MessageRouting;
 use Workshop\Kafka\Client\ConsumerFactory;
+use Workshop\Kafka\Client\ProducerFactory;
 use Workshop\Kafka\Config\BrokerProbe;
 use Workshop\Kafka\Config\ConfBuilder;
 use Workshop\Kafka\Config\KafkaProfiles;
@@ -98,8 +100,16 @@ final class ConsumeCommandTest extends TestCase
             new IdempotencyMiddleware(new EventDedup($connection)),
         );
 
+        $producers = new ProducerFactory(
+            new ConfBuilder('broker.test:29092', $noop),
+            new KafkaProfiles(),
+            new MessageRouting([]),
+            new MessageNameResolver(),
+        );
+
         $command = new ConsumeCommand(
             $consumers,
+            $producers,
             new MessageInterpreter(new DtoRouting([]), $serializer, new MessageDenormalizer()),
             $bus,
             new ConsoleWriter(),

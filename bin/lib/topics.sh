@@ -31,4 +31,14 @@ WORKSHOP_TOPICS=(
   # means a single bin/kafka-setup provisions the whole workshop.
   "enet.ecommerce.outbox.Order:6"      # key=aggregateId — CDC output for the Order aggregate
   "schema-history.outbox:1"            # key=null      — Debezium schema-history log
+
+  # Block 7 — error handling. The error.demo event's DEDICATED topic family: the
+  # outbox relay lands ErrorDemo aggregates on the main topic; kafka:consume
+  # --errors routes failures to .retry (transient parking, drained by the slow
+  # lane) and .dlq (poison/permanent — manual triage via kafka:dlq:inspect).
+  # 3 main partitions make never-block-a-partition visible per partition; the
+  # retry/dlq tiers are low-throughput, 1 partition each.
+  "enet.ecommerce.outbox.ErrorDemo:3"       # key=demo id — Block 7 main lane
+  "enet.ecommerce.outbox.ErrorDemo.retry:1" # key=demo id — transient parking (slow lane)
+  "enet.ecommerce.outbox.ErrorDemo.dlq:1"   # key=demo id — dead letters, manual triage only
 )

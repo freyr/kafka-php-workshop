@@ -57,6 +57,15 @@ final readonly class KafkaProfiles
                 ...$this->timeouts(),
             ]),
 
+            // Block 7: the off-load producer behind kafka:consume --errors (DLQ +
+            // retry topics). Reliability and timeouts only — every off-load is a
+            // single small send whose delivery ack gates the source offset commit,
+            // so batching/lingering tuning would only delay the flush.
+            new KafkaProfile('producer.dlq', ClientRole::Producer, [
+                ...$this->reliability(),
+                ...$this->timeouts(),
+            ]),
+
             // Throwaway inspector: reads the whole log from earliest and never
             // commits, so nothing it does is durable. No group.instance.id (a
             // throwaway group must not be fenced on re-run) and no assignment
