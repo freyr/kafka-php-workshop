@@ -45,8 +45,14 @@ workshop:
         # product_catalog_state_change table (Debezium EventRouter → topic, bytes
         # pass-through). The loyalty side consumes it with ZERO PHP code: a Connect
         # JDBC sink decodes the AVRO and upserts products_projection. The topic here
-        # is the EventRouter's pinned destination, stated for the record; the
-        # route's real job is the subject + schema the AVRO encode resolves.
+        # is the EventRouter's pinned destination, stated for the
+        # record; the route's real job is the subject + schema the AVRO encode
+        # resolves. UNLIKE the other routes (RecordNameStrategy), this subject is
+        # TopicNameStrategy (<topic>-value): the consumer is a STOCK Confluent
+        # AvroConverter in the JDBC sink, and besides decoding by the frame's
+        # schema id it resolves the schema's version under <topic>-value — a 404
+        # there fails the sink task. Subject strategy is part of the consumer
+        # contract; interop with stock tooling wins over the repo convention.
         # NOTE the underscore in projection_change: Symfony Config normalizes
         # DASHES in config keys to underscores at load time (dots survive), so
         # a key written catalog.projection-change would resolve as
@@ -55,5 +61,5 @@ workshop:
         # kafka:schema:register actually see. Only the TOPIC keeps its dashes.
         catalog.projection_change:
             topic: enet.product-catalog.projection-change
-            subject: enet.product_catalog.projection_change
+            subject: enet.product-catalog.projection-change-value
             schema: '%kafka.schema_dir%/catalog/ProjectionChange.avsc'
