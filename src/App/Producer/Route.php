@@ -6,8 +6,9 @@ namespace Workshop\App\Producer;
 
 /**
  * The wire identity of one message name: which topic it is produced to, the
- * Schema Registry subject it registers under (RecordNameStrategy), and the path
- * to its AVRO schema.
+ * Schema Registry subject it registers under (RecordNameStrategy by default;
+ * TopicNameStrategy for routes that interop with stock Kafka Connect tooling),
+ * and the path to its AVRO schema.
  */
 final readonly class Route
 {

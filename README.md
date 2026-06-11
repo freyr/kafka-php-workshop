@@ -205,7 +205,9 @@ Consulting vault.
   the `message-name` Kafka **header** — so consumers route or skip without decoding.
 - **Serializer.** `AvroSerializer` implements `MessageSerializer` (`src/Kafka/Serde/`):
   the Confluent wire format — magic byte + 4-byte schema id + Avro body, under
-  RecordNameStrategy subjects. `SchemaRegistryClient` handles register/check/versions;
+  RecordNameStrategy subjects by default (the Block 9 catalog route uses
+  TopicNameStrategy (`<topic>-value`) for stock Kafka Connect interop).
+  `SchemaRegistryClient` handles register/check/versions;
   it never touches the wire format.
 - **Routing is data.** `config/producers.yaml` maps message-name →
   `{topic, subject, schema}` (`MessageRouting`/`Route`); `config/consumers.yaml`
@@ -228,10 +230,12 @@ Consulting vault.
 │   │   ├── Console/         # one class per command (#[AsCommand])
 │   │   ├── Producer/        # Message base + events, MessageName, routing
 │   │   ├── Consumer/        # read-model DTOs + denormalizer
-│   │   └── Outbox/          # Block 6: transactional placer + relay's table gateway
+│   │   ├── Outbox/          # Block 6: transactional placer + relay's table gateway
+│   │   └── Catalog/         # Block 9: ProjectionChange message, placer, repository, schema installer
 │   ├── Kafka/               # the "plugin": Client, Serde, Config, Callback, Runtime
 │   └── Framework/           # Kernel, DI extension, Db (DBAL connection + schema)
 ├── schemas/                 # AVRO: orders/ audit/ demo/ (Block 4 evolution)
+│   └── catalog/             # Block 9: ProjectionChange.avsc (TopicNameStrategy subject)
 ├── tests/                   # PHPUnit suite
 └── blocks/                  # facilitator notes (gitignored)
 ```
@@ -244,9 +248,11 @@ Consulting vault.
 - **Generic, parametrized commands over per-demo classes.** Add behavior with a flag,
   not a new class; reach for a new command only for a genuinely distinct operation.
 - **Routing as data.** Topic/subject/schema and name→DTO maps live in YAML, not code.
-- **Subjects use RecordNameStrategy** — the fully-qualified record name
+- **Subjects use RecordNameStrategy by default** — the fully-qualified record name
   (`com.ecommerce.orders.order_created`), carrying no version marker; a breaking
-  change mints a new subject. Each event type evolves on its own lineage.
+  change mints a new subject. Each event type evolves on its own lineage. The
+  Block 9 catalog route uses TopicNameStrategy (`<topic>-value`) for stock Kafka
+  Connect interop.
 - **Config in `.env`** (`KAFKA_BROKERS`, `SCHEMA_REGISTRY_URL`); per-user overrides
   in `.env.local`.
 - Polish-language comments are fine in exercises; identifiers and shipped demos stay

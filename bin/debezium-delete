@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deletes the Debezium outbox connector (Block 6) and purges its framework-managed
-# source offsets, so nothing stale survives for the next register (offsets are
+# Deletes a Debezium connector (default: outbox-connector, Block 6) and purges
+# its framework-managed source offsets, so nothing stale survives for the next
+# register (offsets are
 # keyed by connector name in connect_offsets and outlive plain deletion). The
 # schema-history / output topics are left in place — drop the whole stack with
 # 'make destroy' to wipe everything. Safe to run when Connect is down or the

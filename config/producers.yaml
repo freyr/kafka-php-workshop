@@ -1,10 +1,12 @@
 # Produce-side routing: message name => wire identity (topic + subject + schema).
 # Every route is AVRO — the producer streams enveloped events encoded against
-# Schema Registry. Subjects use RecordNameStrategy (the schema's fully-qualified
-# record name, lower_snake component) and carry NO version marker — a breaking
-# change mints a brand-new subject, never a vN suffix. order.* events share one
-# topic; each registers its own subject. Schema paths resolve against
-# %kafka.schema_dir%.
+# Schema Registry. Subjects use RecordNameStrategy by default (the schema's
+# fully-qualified record name, lower_snake component) and carry NO version marker
+# — a breaking change mints a brand-new subject, never a vN suffix; the Block 9
+# catalog route is the documented exception, using TopicNameStrategy
+# (<topic>-value) for stock Kafka Connect interop (see that route's comment).
+# order.* events share one topic; each registers its own subject. Schema paths
+# resolve against %kafka.schema_dir%.
 workshop:
     producers:
         order.created:

@@ -15,8 +15,10 @@ set -euo pipefail
 # then resumed — stale binlog offsets + a recreated schema-history topic
 # otherwise kill the task on startup. The SINK's offsets are an ordinary
 # consumer group (connect-catalog-sink-connector); plain delete + create
-# converges, and the consumer's earliest auto-reset backfills the projection
-# from the topic's full retention.
+# converges, and the consumer's earliest auto-reset backfills the projection on
+# FIRST registration; afterwards committed group offsets survive recreation —
+# purge them with `make catalog-delete` (offset purge included) to force a full
+# replay.
 
 CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
