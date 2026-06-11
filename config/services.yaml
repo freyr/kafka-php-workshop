@@ -98,6 +98,14 @@ services:
     Workshop\App\Outbox\OrderStateWriter: ~
     Workshop\App\Outbox\OutboxPlacer: ~
 
+    # Block 9 — the catalog projection demo's produce side (the consume side has
+    # NO PHP at all: a Connect JDBC sink fills products_projection). The placer
+    # reuses the AVRO MessageSerializer; ProjectionChange is a value object,
+    # never a service.
+    Workshop\Framework\Db\CatalogSchemaInstaller: ~
+    Workshop\App\Catalog\CatalogStateChangeRepository: ~
+    Workshop\App\Catalog\CatalogChangePlacer: ~
+
     # Resolves a message's wire name from its #[MessageName] attribute, caching the
     # class => name mapping so reflection runs once per type (produce-side only;
     # the Produce namespace is otherwise value objects, never services).
