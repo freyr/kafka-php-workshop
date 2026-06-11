@@ -15,7 +15,7 @@ use Workshop\Kafka\Serde\SchemaRegistryClient;
 
 #[AsCommand(
     name: 'kafka:schema:check',
-    description: 'Check whether a candidate .avsc is compatible with the latest registered version of an event subject — the pre-registration CI gate.',
+    description: 'Check whether a candidate .avsc is compatible with an event subject\'s registered versions, under the subject\'s compatibility level (latest only for plain levels, every past version for *_TRANSITIVE) — the pre-registration CI gate.',
 )]
 final class SchemaCheckCommand extends Command
 {
@@ -69,13 +69,13 @@ final class SchemaCheckCommand extends Command
         }
 
         if ($result['compatible']) {
-            $output->writeln('  <info>✓ COMPATIBLE</info> with the latest registered version — safe to register.');
+            $output->writeln('  <info>✓ COMPATIBLE</info> under the subject\'s compatibility level — safe to register.');
             $output->writeln('  Register it: <comment>bin/console kafka:schema:register ' . $type . '</comment>');
 
             return Command::SUCCESS;
         }
 
-        $output->writeln('  <error>✗ NOT COMPATIBLE</error> with the latest registered version — registration would be rejected (409).');
+        $output->writeln('  <error>✗ NOT COMPATIBLE</error> under the subject\'s compatibility level — registration would be rejected (409).');
         $output->writeln('  Fix: add a <comment>default</comment> to new fields, or avoid removing/renaming/retyping required fields.');
 
         return Command::FAILURE;

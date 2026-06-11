@@ -7,15 +7,20 @@ namespace Workshop\Kafka\Serde;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Psr7\Request;
 use Psr\Http\Message\RequestInterface;
 
 use function FlixTech\SchemaRegistryApi\Requests\allSubjectVersionsRequest;
 use function FlixTech\SchemaRegistryApi\Requests\changeSubjectCompatibilityLevelRequest;
-use function FlixTech\SchemaRegistryApi\Requests\checkSchemaCompatibilityAgainstVersionRequest;
 use function FlixTech\SchemaRegistryApi\Requests\deleteSubjectVersionRequest;
+use function FlixTech\SchemaRegistryApi\Requests\prepareJsonSchemaForTransfer;
 use function FlixTech\SchemaRegistryApi\Requests\registerNewSchemaVersionWithSubjectRequest;
 use function FlixTech\SchemaRegistryApi\Requests\singleSubjectVersionRequest;
 use function FlixTech\SchemaRegistryApi\Requests\subjectCompatibilityLevelRequest;
+use function FlixTech\SchemaRegistryApi\Requests\validateSchemaStringAsJson;
+
+use const FlixTech\SchemaRegistryApi\Constants\ACCEPT_HEADER;
+use const FlixTech\SchemaRegistryApi\Constants\CONTENT_TYPE_HEADER;
 
 /**
  * Thin Schema Registry REST client. Wraps the flix-tech PSR-7 request builders
@@ -63,9 +68,16 @@ final readonly class SchemaRegistryClient
     }
 
     /**
-     * Check whether $schemaJson is compatible with the latest registered version
-     * of $subject, under the subject's (or global) compatibility level. This is
-     * the same check a CI pipeline runs before merging a schema change.
+     * Check whether $schemaJson is compatible with $subject's registered versions,
+     * under the subject's (or global) compatibility level. This is the same check
+     * a CI pipeline runs before merging a schema change.
+     *
+     * Uses the registry's no-version endpoint (POST /compatibility/subjects/x/versions)
+     * rather than pinning `latest`: the pinned form checks ONLY that one version, so
+     * it returns a false green under *_TRANSITIVE levels — exactly the case the
+     * level exists to catch. The no-version form applies the subject's effective
+     * level: latest only for plain levels, every past version for transitive ones —
+     * the same evaluation registration itself runs, so check and register agree.
      *
      * @return array{compatible: bool, firstVersion: bool} firstVersion=true when
      *                                                     the subject has no
@@ -76,7 +88,7 @@ final readonly class SchemaRegistryClient
      */
     public function checkCompatibility(string $subject, string $schemaJson): array
     {
-        $response = $this->send(checkSchemaCompatibilityAgainstVersionRequest($schemaJson, $subject, 'latest'));
+        $response = $this->send($this->checkSchemaCompatibilityAgainstAllVersionsRequest($schemaJson, $subject));
         $status = $response['status'];
 
         // 404 = subject (or version) not found — the first schema for a subject
@@ -226,6 +238,21 @@ final readonly class SchemaRegistryClient
         $deleted = json_decode($response['body'], true);
 
         return is_numeric($deleted) ? (int) $deleted : null;
+    }
+
+    /**
+     * The no-version compatibility check (POST /compatibility/subjects/x/versions).
+     * flix-tech only ships the version-pinned builder, so this mirrors its request
+     * shape against the endpoint that honors transitive levels.
+     */
+    private function checkSchemaCompatibilityAgainstAllVersionsRequest(string $schemaJson, string $subject): RequestInterface
+    {
+        return new Request(
+            'POST',
+            sprintf('compatibility/subjects/%s/versions', $subject),
+            CONTENT_TYPE_HEADER + ACCEPT_HEADER,
+            prepareJsonSchemaForTransfer(validateSchemaStringAsJson($schemaJson)),
+        );
     }
 
     /**
