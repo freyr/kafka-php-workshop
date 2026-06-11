@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "ProjectionChange",
+  "namespace": "enet.product_catalog",
+  "doc": "State-transfer event: the FULL current state of one product, published on every change. Consumers build read-only projections by upserting on sku — no deltas, last event wins. Flat on purpose: a JDBC sink maps fields to columns 1:1. AVRO names forbid dashes, so the dashed spelling lives only in the topic (enet.product-catalog.projection-change). Self-contained schema — EventMetadata is inlined so it registers as a single subject.",
+  "fields": [
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadata",
+        "namespace": "com.ecommerce.common",
+        "doc": "Minimal envelope metadata carried by every event.",
+        "fields": [
+          {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Globally unique id; idempotency/dedup key."},
+          {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC epoch millis when the message was created."}
+        ]
+      }
+    },
+    {"name": "sku", "type": "string", "doc": "Stock keeping unit — the product's identity and the projection's primary key."},
+    {"name": "name", "type": "string", "doc": "Display name, current value."},
+    {"name": "price", "type": "long", "doc": "Selling price in minor units (grosze, PLN) — Money-as-cents convention, no floats."},
+    {"name": "margin", "type": "long", "doc": "Margin in minor units (grosze, PLN)."}
+  ]
+}

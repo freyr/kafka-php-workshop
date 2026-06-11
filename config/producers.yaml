@@ -40,3 +40,20 @@ workshop:
             topic: enet.ecommerce.outbox.ErrorDemo
             subject: com.ecommerce.demo.error_demo
             schema: '%kafka.schema_dir%/demo/ErrorDemo.avsc'
+        # Block 9 — catalog projection demo. A state-transfer (fat) event carrying
+        # the product's FULL current state, placed only through the
+        # product_catalog_state_change table (Debezium EventRouter → topic, bytes
+        # pass-through). The loyalty side consumes it with ZERO PHP code: a Connect
+        # JDBC sink decodes the AVRO and upserts products_projection. The topic here
+        # is the EventRouter's pinned destination, stated for the record; the
+        # route's real job is the subject + schema the AVRO encode resolves.
+        # NOTE the underscore in projection_change: Symfony Config normalizes
+        # DASHES in config keys to underscores at load time (dots survive), so
+        # a key written catalog.projection-change would resolve as
+        # catalog.projection_change anyway — it is written in that runtime form
+        # here so the file matches what the routing table and
+        # kafka:schema:register actually see. Only the TOPIC keeps its dashes.
+        catalog.projection_change:
+            topic: enet.product-catalog.projection-change
+            subject: enet.product_catalog.projection_change
+            schema: '%kafka.schema_dir%/catalog/ProjectionChange.avsc'
