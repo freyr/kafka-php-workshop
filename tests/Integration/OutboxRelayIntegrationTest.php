@@ -10,9 +10,10 @@ use Workshop\Framework\Db\OutboxSchemaInstaller;
 /**
  * The Block 6 transactional-outbox flow against the live stack: outbox:place
  * commits the order mutation and the outbox row atomically (or rolls both back),
- * and outbox:relay drains pending rows to enet.ecommerce.outbox.Order — observed
- * via watermark deltas, like every topic assertion in this suite — marking them
- * published only afterwards.
+ * storing Confluent-framed AVRO bytes (encoded against the registered subjects,
+ * like kafka:produce:sample), and outbox:relay forwards them untouched to
+ * enet.ecommerce.outbox.Order — observed via watermark deltas, like every topic
+ * assertion in this suite — marking rows published only afterwards.
  */
 final class OutboxRelayIntegrationTest extends IntegrationTestCase
 {
@@ -23,8 +24,7 @@ final class OutboxRelayIntegrationTest extends IntegrationTestCase
         parent::setUp();
 
         // Drop-and-recreate (not ensure-and-truncate): another test in the suite
-        // may have provisioned the outbox in the AVRO payload format, and ensure
-        // would silently keep that column type.
+        // may have left a stale table behind, and ensure would silently keep it.
         $installer = new OutboxSchemaInstaller($this->db());
         $installer->drop();
         $installer->install();
@@ -47,15 +47,13 @@ final class OutboxRelayIntegrationTest extends IntegrationTestCase
         // One order row: a pool of 1 concentrates all writes on a single aggregate.
         self::assertSame(1, $this->rowCount('orders'));
 
-        // The stored payload is the wire envelope; its metadata.event_id is the
-        // row's id — the dedup key both relay flavors forward.
-        $row = $this->db()->fetchAssociative('SELECT id, payload FROM outbox ORDER BY position LIMIT 1');
-        self::assertIsArray($row);
-        self::assertIsString($row['payload']);
-        $payload = json_decode($row['payload'], true);
-        self::assertIsArray($payload);
-        self::assertIsArray($payload['metadata']);
-        self::assertSame($row['id'], $payload['metadata']['event_id']);
+        // The stored payload IS the wire payload — Confluent framing (0x00 magic
+        // byte + 4-byte schema id + AVRO body), no relay re-serializes it.
+        $payload = $this->db()->fetchOne('SELECT payload FROM outbox ORDER BY position LIMIT 1');
+        self::assertIsString($payload);
+        self::assertGreaterThan(5, strlen($payload));
+        self::assertSame("\x00", $payload[0]);
+        self::assertFalse(json_validate($payload), 'an AVRO payload must not be JSON text');
     }
 
     public function testFailRollsBackBothWritesLeavingNoTrace(): void
@@ -69,6 +67,26 @@ final class OutboxRelayIntegrationTest extends IntegrationTestCase
 
         self::assertSame(0, $this->rowCount('outbox'));
         self::assertSame(0, $this->rowCount('orders'));
+    }
+
+    public function testSetupRefusesAStaleNonBlobPayloadColumn(): void
+    {
+        // A table left behind by a pre-AVRO provisioning (JSON payload column):
+        // setup must fail loudly and demand --fresh instead of lying about the
+        // column under existing rows.
+        $this->db()->executeStatement('DROP TABLE outbox');
+        $this->db()->executeStatement(<<<'SQL'
+            CREATE TABLE outbox (
+              position BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              payload  JSON NOT NULL,
+              PRIMARY KEY (position)
+            ) ENGINE=InnoDB
+            SQL);
+
+        $tester = $this->runCommand('outbox:setup');
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode(), $tester->getDisplay());
+        self::assertStringContainsString('--fresh', $tester->getDisplay());
     }
 
     public function testRelayPublishesThePendingBacklogThenMarksIt(): void

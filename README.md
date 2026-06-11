@@ -149,16 +149,19 @@ publishes the event to Kafka afterwards, so the broker is never on the business
 write's critical path:
 
 ```sh
-bin/console outbox:setup [--fresh] [--format json|avro]   # provision the outbox (and ensure orders)
-bin/console outbox:place [-c N] [--message-name NAME] [--pool N] [--fail] [--format json|avro]
+bin/console outbox:setup [--fresh]                        # provision the outbox (and ensure orders)
+bin/console outbox:place [-c N] [--message-name NAME] [--pool N] [--fail]
 bin/console outbox:relay [--batch N] [--interval MS] [--once] [--profile NAME]
 ```
 
 `outbox:place` simulates the producing service: per write it mutates the `orders`
-row **and** appends the event (`order.created/updated/cancelled`, the same JSON
-envelope the AVRO path uses) to `outbox` — atomically, no Kafka client involved.
-`--fail` crashes each transaction right before COMMIT: afterwards neither table has
-a trace, the beat that produce-then-commit cannot replicate. The relay is either:
+row **and** appends the event (`order.created/updated/cancelled`) to `outbox` —
+atomically, no Kafka client involved. The payload is Confluent-framed AVRO,
+encoded at placement via the same `MessageSerializer` as `kafka:produce:sample`
+and stored in a binary column, so schemas must be registered before placing
+(`kafka:schema:register --all`). `--fail` crashes each transaction right before
+COMMIT: afterwards neither table has a trace, the beat that produce-then-commit
+cannot replicate. The relay is either:
 
 - **PHP polling relay** — `outbox:relay` is a long-running process draining pending
   rows in insertion order to `enet.ecommerce.outbox.<aggregate_type>` (key =
@@ -166,26 +169,16 @@ a trace, the beat that produce-then-commit cannot replicate. The relay is either
   only after the broker acked the whole batch — at-least-once, mark-after-ack.
 - **Debezium CDC** — `bin/debezium-register` registers a MySQL binlog connector whose
   EventRouter SMT routes the same rows to the same topics, no PHP process at all
-  (`config/debezium-outbox-connector.json`).
+  (`config/debezium-outbox-connector.json` — `ByteArrayConverter` pass-through).
 
-Run one flavor at a time (they'd double-publish the same rows); watch the result
-with `make outbox-watch`.
-
-**AVRO payload variant** — `--format avro` (on both `outbox:setup` and
-`outbox:place`; switching formats needs `--fresh`) makes the *application* encode
-the envelope to Confluent-framed AVRO via the same `MessageSerializer` as
-`kafka:produce:sample`, stored in a binary column. Both relays then move opaque
-bytes — the PHP relay unchanged, Debezium via
-`config/debezium-outbox-connector-avro.json` (`make debezium-register-avro`:
-no JSON expansion, `ByteArrayConverter` pass-through). Relayed records are
-**byte-identical** to directly produced ones — same registered schemas, same
-registry governance — so `kafka:consume enet.ecommerce.outbox.Order` decodes and
-projects them like any AVRO topic. The trade-off vs the JSON format: the payload
-is no longer readable in MySQL, and schemas must be registered before placing.
-Connect-level Avro (deriving schemas from expanded JSON) is deliberately not
-used: inferred schemas vary per record once nulls are dropped — the registry
-deserves better. Full facilitator runbook: `Block-06-Demo-Runbook.md` in the
-Consulting vault.
+Both relays move opaque bytes, so a relayed record is **byte-identical** to a
+directly produced one — same registered schemas, same registry governance — and
+`kafka:consume enet.ecommerce.outbox.Order` decodes and projects it like any
+AVRO topic. Run one relay flavor at a time (they'd double-publish the same
+rows); watch the result with `make outbox-watch`. Connect-level Avro (deriving
+schemas from expanded JSON) is deliberately not used: inferred schemas vary per
+record once nulls are dropped — the registry deserves better. Full facilitator
+runbook: `Block-06-Demo-Runbook.md` in the Consulting vault.
 
 **Topic & group operations** — shell scripts in `bin/` (php-rdkafka has no admin API):
 `kafka-setup` / `kafka-teardown` (provision/drop the full topic inventory),

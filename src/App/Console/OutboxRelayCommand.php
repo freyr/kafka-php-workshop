@@ -98,8 +98,8 @@ final class OutboxRelayCommand extends Command
 
             $producer->resetDeliveryTally();
             foreach ($records as $record) {
-                // Same header convention as the AVRO path: a consumer can route on
-                // message-name and dedup on event-id without decoding the JSON body.
+                // Same header convention as the direct produce path: a consumer can
+                // route on message-name and dedup on event-id without decoding the body.
                 // A row with no event type (outbox:place --headerless, the Block 7
                 // contract-violation beat) ships WITHOUT the message-name header —
                 // the relay carries bytes; it does not invent the convention.

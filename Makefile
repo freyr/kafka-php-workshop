@@ -88,10 +88,10 @@ groups: ## list all consumer groups
 	docker compose exec kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list
 
 ##@ Outbox (Block 6 transactional outbox)
-outbox-setup: ## provision the outbox table (FRESH=1 to drop + recreate; FORMAT=avro for the AVRO payload variant)
-	docker compose run --rm php bin/console outbox:setup $(if $(FRESH),--fresh,) $(if $(FORMAT),--format $(FORMAT),)
-outbox-place: ## place business writes: order + outbox row in one tx (COUNT=n NAME=order.created FAIL=1 FORMAT=avro)
-	docker compose run --rm php bin/console outbox:place $(if $(COUNT),--count $(COUNT),) $(if $(NAME),--message-name $(NAME),) $(if $(FAIL),--fail,) $(if $(FORMAT),--format $(FORMAT),)
+outbox-setup: ## provision the outbox table (FRESH=1 to drop + recreate)
+	docker compose run --rm php bin/console outbox:setup $(if $(FRESH),--fresh,)
+outbox-place: ## place business writes: order + outbox row in one tx (COUNT=n NAME=order.created FAIL=1)
+	docker compose run --rm php bin/console outbox:place $(if $(COUNT),--count $(COUNT),) $(if $(NAME),--message-name $(NAME),) $(if $(FAIL),--fail,)
 outbox-relay: ## run the PHP polling relay until Ctrl+C (ONCE=1 to drain the backlog and exit)
 	docker compose run --rm php bin/console outbox:relay $(if $(ONCE),--once,)
 outbox-watch: ## tail the relayed topic with keys + headers (both relay flavors land here)
@@ -108,12 +108,12 @@ enqueue-consume: ## consume through the message bus with dedup always on (TOPIC=
 	docker compose run --rm php bin/console enqueue:consume $(if $(TOPIC),$(TOPIC),) $(if $(GROUP),--group $(GROUP),) $(if $(MAX),--max $(MAX),)
 
 ##@ Error handling (Block 7 — error.demo topic family, DLQ + retry)
-errors-setup: ## provision the Block 7 demo: ensure topics, re-provision the outbox for AVRO (the demo lane ships real wire bytes), ensure the runtime_flags table
+errors-setup: ## provision the Block 7 demo: ensure topics, reset the outbox, ensure the runtime_flags table
 	bin/kafka-setup
-	docker compose run --rm php bin/console outbox:setup --fresh --format avro
+	docker compose run --rm php bin/console outbox:setup --fresh
 	docker compose run --rm php bin/console kafka:consume:setup
 errors-produce: ## place error.demo events through the outbox with failures scattered in (COUNT=20 POISON=2 unframed + HEADERLESS=2 convention-less), then relay them to the main topic
-	docker compose run --rm php bin/console outbox:place --message-name error.demo --format avro --count $(or $(COUNT),20) --poison $(or $(POISON),2) --headerless $(or $(HEADERLESS),2)
+	docker compose run --rm php bin/console outbox:place --message-name error.demo --count $(or $(COUNT),20) --poison $(or $(POISON),2) --headerless $(or $(HEADERLESS),2)
 	docker compose run --rm php bin/console outbox:relay --once
 errors-consume-main: ## the main lane: 3 short retries, then off-load; poison/permanent → DLQ; breaker fails fast. Ctrl+C to stop
 	docker compose run --rm php bin/console kafka:consume enet.ecommerce.outbox.ErrorDemo --errors main --profile modern --idempotent --group errors-main -v
@@ -129,10 +129,8 @@ dlq-replay: ## repair + re-publish DLQ messages to their original topic (DRY=1 p
 	docker compose run --rm php bin/console kafka:dlq:replay $(if $(DRY),--dry-run,) $(if $(FIX_FRAME),--fix-frame,) $(if $(FIX_NAME),--fix-message-name $(FIX_NAME),) $(if $(ID),--id $(ID),)
 
 ##@ Debezium (Block 6 CDC outbox)
-debezium-register: ## register the connector for the JSON-payload outbox (EventRouter expands the envelope)
+debezium-register: ## register the outbox connector (ByteArrayConverter pass-through — the payload column already holds AVRO wire bytes)
 	bin/debezium-register
-debezium-register-avro: ## register the connector for the AVRO-payload outbox (ByteArrayConverter pass-through; replaces the JSON one)
-	bin/debezium-register config/debezium-outbox-connector-avro.json
 debezium-status: ## show the connector + task state
 	bin/debezium-status
 debezium-delete: ## delete the connector

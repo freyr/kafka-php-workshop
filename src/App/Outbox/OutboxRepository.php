@@ -21,7 +21,7 @@ final readonly class OutboxRepository
     ) {
     }
 
-    public function add(string $id, string $aggregateType, string $aggregateId, string $eventType, string $payloadJson): void
+    public function add(string $id, string $aggregateType, string $aggregateId, string $eventType, string $payload): void
     {
         $this->connection->executeStatement(
             <<<'SQL'
@@ -33,7 +33,7 @@ final readonly class OutboxRepository
                 'aggregate_type' => $aggregateType,
                 'aggregate_id' => $aggregateId,
                 'event_type' => $eventType,
-                'payload' => $payloadJson,
+                'payload' => $payload,
             ],
         );
     }

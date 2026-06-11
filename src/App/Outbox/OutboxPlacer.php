@@ -54,16 +54,20 @@ final readonly class OutboxPlacer
      *                                  (NOT poison — decodes silently into junk)
      *
      * @throws SimulatedCrash          when $crashBeforeCommit is set (after rollback)
-     * @throws SchemaRegistryException when the Avro format must encode against an unregistered subject
-     * @throws DriverException         when the encoding does not match the provisioned payload column (e.g. AVRO bytes into a JSON column)
+     * @throws SchemaRegistryException when encoding against an unregistered subject
+     * @throws DriverException         when the write does not fit the provisioned payload column
      */
-    public function place(Message $message, bool $crashBeforeCommit = false, PayloadFormat $format = PayloadFormat::Json, Tamper $tamper = Tamper::None): void
+    public function place(Message $message, bool $crashBeforeCommit = false, Tamper $tamper = Tamper::None): void
     {
-        // Encoding happens OUTSIDE the transaction on purpose: the AVRO path may
-        // call the Schema Registry (cache miss), and a remote lookup has no
-        // business holding a database transaction open — same discipline as
-        // keeping the broker off the business write's critical path.
-        $payload = $this->corrupt($this->encode($message, $format), $format, $tamper);
+        // The payload is the actual wire bytes: Confluent framing against the
+        // message's registered subject, produced by the same MessageSerializer as
+        // kafka:produce:sample — so a relayed record is byte-identical to a
+        // directly produced one, and kafka:consume can decode it. Encoding happens
+        // OUTSIDE the transaction on purpose: the serializer may call the Schema
+        // Registry (cache miss), and a remote lookup has no business holding a
+        // database transaction open — same discipline as keeping the broker off
+        // the business write's critical path.
+        $payload = $this->corrupt($this->serializer->encode($message), $tamper);
 
         $this->connection->transactional(function () use ($message, $payload, $crashBeforeCommit, $tamper): void {
             $eventType = $this->names->nameOf($message);
@@ -108,30 +112,8 @@ final readonly class OutboxPlacer
      * the schema's defaults without throwing.) The relay's contract is bytes; it
      * cannot protect the consumer — the consumer defends itself.
      */
-    private function corrupt(string $payload, PayloadFormat $format, Tamper $tamper): string
+    private function corrupt(string $payload, Tamper $tamper): string
     {
-        if (Tamper::Unframed !== $tamper) {
-            return $payload;
-        }
-
-        return match ($format) {
-            PayloadFormat::Avro => substr($payload, 5),
-            PayloadFormat::Json => 'POISON — not valid JSON, not valid AVRO',
-        };
-    }
-
-    /**
-     * Json stores the same envelope the AVRO path puts on the wire — just
-     * JSON-encoded. Avro stores the actual wire bytes: Confluent framing against
-     * the message's registered subject, produced by the same MessageSerializer as
-     * kafka:produce:sample — so a relayed record is byte-identical to a directly
-     * produced one, and kafka:consume can decode it.
-     */
-    private function encode(Message $message, PayloadFormat $format): string
-    {
-        return match ($format) {
-            PayloadFormat::Json => json_encode($message->envelope(), JSON_THROW_ON_ERROR),
-            PayloadFormat::Avro => $this->serializer->encode($message),
-        };
+        return Tamper::Unframed === $tamper ? substr($payload, 5) : $payload;
     }
 }

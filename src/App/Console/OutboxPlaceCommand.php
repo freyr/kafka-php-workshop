@@ -13,7 +13,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Uid\Uuid;
 use Workshop\App\Outbox\OutboxPlacer;
-use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
 use Workshop\App\Outbox\Tamper;
 use Workshop\App\Producer\ErrorDemo;
@@ -55,9 +54,8 @@ final class OutboxPlaceCommand extends Command
             ->addOption('pool', null, InputOption::VALUE_REQUIRED, 'Size of the reusable order-id pool; default: 8', '8')
             ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Milliseconds to pause between writes; default: 10', '10')
             ->addOption('fail', null, InputOption::VALUE_NONE, 'Crash each transaction right before COMMIT — the rollback beat: afterwards neither the order row nor the outbox row exists')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Payload encoding: json (envelope as JSON text) | avro (Confluent-framed bytes against the registered schemas — must match outbox:setup --format)', 'json')
-            ->addOption('poison', null, InputOption::VALUE_REQUIRED, 'Block 7: strip the Confluent frame from this many randomly-chosen placements (of --count) — raw AVRO bytes, as a producer using the wrong serializer would ship; the consumer can never decode them. Only with --message-name error.demo and --format avro', '0')
-            ->addOption('headerless', null, InputOption::VALUE_REQUIRED, 'Block 7: ship this many randomly-chosen placements (of --count) WITHOUT the message-name header — the payload stays perfectly valid AVRO, but the envelope convention is broken and the record can never be routed. Only with --message-name error.demo and --format avro', '0');
+            ->addOption('poison', null, InputOption::VALUE_REQUIRED, 'Block 7: strip the Confluent frame from this many randomly-chosen placements (of --count) — raw AVRO bytes, as a producer using the wrong serializer would ship; the consumer can never decode them. Only with --message-name error.demo', '0')
+            ->addOption('headerless', null, InputOption::VALUE_REQUIRED, 'Block 7: ship this many randomly-chosen placements (of --count) WITHOUT the message-name header — the payload stays perfectly valid AVRO, but the envelope convention is broken and the record can never be routed. Only with --message-name error.demo', '0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -67,14 +65,6 @@ final class OutboxPlaceCommand extends Command
         $poolSize = Input::int($input, 'pool');
         $intervalMs = Input::int($input, 'interval');
         $fail = (bool) $input->getOption('fail');
-
-        try {
-            $format = PayloadFormat::fromOption(Input::string($input, 'format'));
-        } catch (\InvalidArgumentException $e) {
-            $output->writeln('<error>' . $e->getMessage() . '</error>');
-
-            return Command::INVALID;
-        }
 
         $poison = Input::int($input, 'poison');
         $headerless = Input::int($input, 'headerless');
@@ -101,15 +91,9 @@ final class OutboxPlaceCommand extends Command
             return Command::INVALID;
         }
         // Containment: injected failures can only ever land in the dedicated
-        // error-demo topic family, and only as AVRO — the demo lane ships real
-        // wire bytes, and the JSON outbox column would make a confusing failure.
+        // error-demo topic family — never in the order topics.
         if ($poison + $headerless > 0 && self::ERROR_DEMO !== $pin) {
             $output->writeln('<error>--poison/--headerless require --message-name error.demo — injected failures must never land in the order topics.</error>');
-
-            return Command::INVALID;
-        }
-        if ($poison + $headerless > 0 && PayloadFormat::Avro !== $format) {
-            $output->writeln('<error>--poison/--headerless require --format avro (provision with: outbox:setup --fresh --format avro).</error>');
 
             return Command::INVALID;
         }
@@ -135,7 +119,7 @@ final class OutboxPlaceCommand extends Command
             $tamper = $tamperAt[$i] ?? Tamper::None;
 
             try {
-                $this->placer->place($message, $fail, $format, $tamper);
+                $this->placer->place($message, $fail, $tamper);
             } catch (SimulatedCrash) {
                 ++$rolledBack;
                 $output->writeln(sprintf('<comment>✗ rolled back</comment> %s key=%s — crashed before COMMIT, so the order write AND the outbox row vanished together', $name, $message->partitionKey()));
@@ -148,11 +132,11 @@ final class OutboxPlaceCommand extends Command
 
                 return Command::FAILURE;
             } catch (DriverException $e) {
-                // The likeliest cause: encoding does not match the payload column
-                // (AVRO bytes into a JSON column, or the reverse).
+                // The likeliest cause: a stale outbox table from an older
+                // provisioning (e.g. a JSON payload column rejecting AVRO bytes).
                 $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
-                $output->writeln(sprintf('Is the outbox provisioned for this format? Re-provision with:'));
-                $output->writeln(sprintf('  <comment>bin/console outbox:setup --fresh --format %s</comment>', $format->value));
+                $output->writeln('Is the outbox provisioned? Re-provision with:');
+                $output->writeln('  <comment>bin/console outbox:setup --fresh</comment>');
 
                 return Command::FAILURE;
             }
