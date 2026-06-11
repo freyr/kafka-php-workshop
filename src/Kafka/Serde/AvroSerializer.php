@@ -26,13 +26,6 @@ use Workshop\App\Producer\MessageRouting;
  */
 final readonly class AvroSerializer implements MessageSerializer
 {
-    /**
-     * Confluent wire format: a 0x00 magic byte, a 4-byte big-endian schema id,
-     * then the AVRO body — so a framed message is at least 5 bytes.
-     */
-    private const string MAGIC_BYTE = "\x00";
-    private const int HEADER_BYTES = 5;
-
     public function __construct(
         private RecordSerializer $serializer,
         private MessageNameResolver $names,
@@ -78,7 +71,7 @@ final readonly class AvroSerializer implements MessageSerializer
      */
     public function decode(string $bytes, ?\AvroSchema $readerSchema = null): mixed
     {
-        if (! $this->isConfluentFramed($bytes)) {
+        if (! ConfluentFrame::isFramed($bytes)) {
             return null;
         }
 
@@ -86,10 +79,5 @@ final readonly class AvroSerializer implements MessageSerializer
         $decoded = $this->serializer->decodeMessage($bytes, $readerSchema);
 
         return $decoded;
-    }
-
-    private function isConfluentFramed(string $bytes): bool
-    {
-        return strlen($bytes) >= self::HEADER_BYTES && self::MAGIC_BYTE === $bytes[0];
     }
 }

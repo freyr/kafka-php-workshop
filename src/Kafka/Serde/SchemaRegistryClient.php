@@ -138,6 +138,28 @@ final readonly class SchemaRegistryClient
     }
 
     /**
+     * The globally unique schema id of a subject's latest registered version —
+     * what the DLQ repair path stamps into the Confluent frame when re-framing a
+     * payload that shipped as raw AVRO. Returns null when the subject has no
+     * versions yet (404).
+     *
+     * @throws GuzzleException
+     */
+    public function latestSchemaId(string $subject): ?int
+    {
+        $response = $this->send(singleSubjectVersionRequest($subject, 'latest'));
+
+        if (404 === $response['status']) {
+            return null;
+        }
+
+        $body = json_decode($response['body'], true);
+        $id = \is_array($body) ? ($body['id'] ?? null) : null;
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    /**
      * The compatibility level in force for a subject. The registry returns the
      * subject-level override if one is set; when none is (404), the subject simply
      * inherits the registry's global default, reported here as 'DEFAULT'.

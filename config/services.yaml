@@ -68,9 +68,12 @@ services:
     Workshop\App\Consumer\FieldPrintHandler: ~
     # Block 7 — ErrorDemoHandler narrates (no projection) and throws
     # TransientException while the failure-mode flag (runtime_flags row,
-    # toggled by kafka:failure-mode) is on.
+    # toggled by kafka:failure-mode) is on. DlqRepair is the payload surgery
+    # behind kafka:dlq:replay --fix-* (re-frame raw AVRO, restore the
+    # message-name header).
     Workshop\App\Consumer\ErrorDemoHandler: ~
     Workshop\App\Consumer\FailureModeSwitch: ~
+    Workshop\App\Consumer\DlqRepair: ~
 
     # The consumer's MySQL store. ConnectionFactory turns the DATABASE_URL parameter
     # into a DBAL Connection (the single construction seam); SchemaInstaller (autowired

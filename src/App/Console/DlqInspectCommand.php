@@ -13,6 +13,7 @@ use Workshop\Kafka\Client\ConsumerFactory;
 use Workshop\Kafka\Runtime\CommitPolicy;
 use Workshop\Kafka\Runtime\OffsetReset;
 use Workshop\Kafka\Runtime\RunLimits;
+use Workshop\Kafka\Serde\ConfluentFrame;
 
 #[AsCommand(
     name: 'kafka:dlq:inspect',
@@ -71,7 +72,7 @@ final class DlqInspectCommand extends Command
                 ++$seen;
                 $output->writeln('');
                 $output->writeln(sprintf(
-                    '<info>[%d]</info> %s id=%s key=%s partition=%d offset=%d (%d payload bytes)',
+                    '<info>[%d]</info> %s id=%s key=%s partition=%d offset=%d (%d payload bytes, %s)',
                     $seen,
                     $this->header($message, 'message-name', '<none>'),
                     $this->header($message, 'event-id', '<none>'),
@@ -79,6 +80,7 @@ final class DlqInspectCommand extends Command
                     $message->partition,
                     $message->offset,
                     \strlen((string) $message->payload),
+                    ConfluentFrame::isFramed((string) $message->payload) ? 'framed' : '<fg=yellow>NOT Confluent-framed</>',
                 ));
                 foreach (self::DIAGNOSTICS as $name) {
                     $output->writeln(sprintf('      %-22s = <comment>%s</comment>', $name, $this->header($message, $name, '—')));

@@ -120,8 +120,8 @@ failure-off: ## flip the transient-failure switch OFF — retries start succeedi
 	docker compose run --rm php bin/console kafka:failure-mode off
 dlq-inspect: ## triage the DLQ: print every dead-lettered message's diagnostic headers (read-only)
 	docker compose run --rm php bin/console kafka:dlq:inspect
-dlq-replay: ## re-publish DLQ messages to their original topic (DRY=1 to preview); replay is dedup-safe
-	docker compose run --rm php bin/console kafka:dlq:replay $(if $(DRY),--dry-run,)
+dlq-replay: ## repair + re-publish DLQ messages to their original topic (DRY=1 preview; FIX_FRAME=1 re-frame raw AVRO; FIX_NAME=error.demo restore the header; ID=<event-id> select one); replay is dedup-safe
+	docker compose run --rm php bin/console kafka:dlq:replay $(if $(DRY),--dry-run,) $(if $(FIX_FRAME),--fix-frame,) $(if $(FIX_NAME),--fix-message-name $(FIX_NAME),) $(if $(ID),--id $(ID),)
 
 ##@ Debezium (Block 6 CDC outbox)
 debezium-register: ## register the connector for the JSON-payload outbox (EventRouter expands the envelope)
