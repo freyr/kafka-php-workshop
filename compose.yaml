@@ -90,11 +90,19 @@ services:
       retries: 10
 
   connect:
-    image: debezium/connect:3.0.0.Final
+    build:
+      context: docker/connect
+    # Always rebuild from the Dockerfile on `up` — without this, a teammate who
+    # pulls this change while holding a pre-converter cached image would
+    # silently run without the AVRO converter (compose only auto-builds when no
+    # local image exists). The layer is cache-hit after the first build.
+    pull_policy: build
     # Kafka Connect + Debezium for the Block 6 CDC outbox relay. Reads the MySQL
     # binlog and routes outbox rows to Kafka via the Outbox Event Router SMT.
     # 3.x is required for MySQL 8.4 (8.4 dropped SHOW MASTER STATUS).
     # Register the connector with bin/debezium-register (it is not auto-created).
+    # The local Dockerfile (docker/connect/) adds the Confluent AVRO converter
+    # for the Block 9 JDBC sink — everything else is the stock Debezium image.
     depends_on:
       kafka:
         condition: service_healthy
