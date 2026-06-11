@@ -1,0 +1,26 @@
+{
+  "name": "catalog-sink-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "enet.product-catalog.projection-change",
+
+    "connection.url": "jdbc:mysql://mysql:3306/workshop",
+    "connection.username": "workshop",
+    "connection.password": "workshop",
+
+    "insert.mode": "upsert",
+    "primary.key.mode": "record_value",
+    "primary.key.fields": "sku",
+    "schema.evolution": "none",
+    "table.name.format": "products_projection",
+
+    "transforms": "dropMetadata",
+    "transforms.dropMetadata.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.dropMetadata.exclude": "metadata",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081"
+  }
+}
