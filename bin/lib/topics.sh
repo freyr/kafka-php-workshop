@@ -41,4 +41,11 @@ WORKSHOP_TOPICS=(
   "enet.ecommerce.outbox.ErrorDemo:3"       # key=demo id — Block 7 main lane
   "enet.ecommerce.outbox.ErrorDemo.retry:1" # key=demo id — transient parking (slow lane)
   "enet.ecommerce.outbox.ErrorDemo.dlq:1"   # key=demo id — dead letters, manual triage only
+
+  # Block 9 — catalog projection demo (Debezium source + JDBC sink, zero
+  # consumer code). The topic carries Confluent-framed AVRO pass-through bytes;
+  # the sink's consumer group is connect-catalog-sink-connector.
+  # bin/catalog-register also ensures these so it stays runnable on its own.
+  "enet.product-catalog.projection-change:3"  # key=sku  — full-state product events
+  "schema-history.catalog:1"                  # key=null — Debezium schema-history log (catalog source)
 )

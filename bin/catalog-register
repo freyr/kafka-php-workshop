@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Registers the Block 9 projection-demo connector PAIR:
+#
+#  - catalog-source-connector: Debezium MySQL CDC on product_catalog_state_change,
+#    EventRouter → enet.product-catalog.projection-change. ByteArray pass-through:
+#    the topic carries the exact Confluent-framed AVRO bytes PHP wrote.
+#  - catalog-sink-connector: Debezium JDBC sink — decodes those bytes with the
+#    Confluent AVRO converter against the Schema Registry, drops the metadata
+#    envelope, and UPSERTs full product state into products_projection on sku.
+#
+# Same clean-start discipline as bin/debezium-register (see the long comment
+# there): the SOURCE is created STOPPED, its framework-managed offsets purged,
+# then resumed — stale binlog offsets + a recreated schema-history topic
+# otherwise kill the task on startup. The SINK's offsets are an ordinary
+# consumer group (connect-catalog-sink-connector); plain delete + create
+# converges, and the consumer's earliest auto-reset backfills the projection
+# from the topic's full retention.
+
+CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_CONFIG="${ROOT}/config/debezium-catalog-source.json"
+SINK_CONFIG="${ROOT}/config/debezium-catalog-sink.json"
+[ -f "$SOURCE_CONFIG" ] || { echo "missing ${SOURCE_CONFIG}" >&2; exit 1; }
+[ -f "$SINK_CONFIG" ]   || { echo "missing ${SINK_CONFIG}"   >&2; exit 1; }
+
+echo "waiting for Kafka Connect at ${CONNECT_URL} …"
+for _ in $(seq 1 60); do
+  if curl -fsS "${CONNECT_URL}/" >/dev/null 2>&1; then break; fi
+  sleep 2
+done
+curl -fsS "${CONNECT_URL}/" >/dev/null || { echo "Kafka Connect is not reachable — is the stack up? Try 'make create'." >&2; exit 1; }
+
+# The sink needs the Confluent AVRO converter — present only in the locally
+# built image (docker/connect/Dockerfile), not the stock one.
+if ! docker compose exec -T connect sh -c 'ls /kafka/connect/confluent-avro-converter/*.jar >/dev/null 2>&1'; then
+  echo "✗ the connect container is missing the Confluent AVRO converter." >&2
+  echo "  Rebuild it: docker compose up -d --build connect" >&2
+  exit 1
+fi
+
+# Output + schema-history topics (broker auto-create is off). Idempotent.
+for entry in "enet.product-catalog.projection-change:3" "schema-history.catalog:1"; do
+  topic="${entry%%:*}"; partitions="${entry##*:}"
+  echo "ensuring topic ${topic} (${partitions} partitions)…"
+  docker compose exec -T kafka kafka-topics \
+    --bootstrap-server kafka:29092 --create --if-not-exists \
+    --topic "$topic" --partitions "$partitions" --replication-factor 1
+done
+
+wait_running() {
+  local name="$1" state="" status=""
+  echo "waiting for ${name}'s task to report RUNNING …"
+  for _ in $(seq 1 30); do
+    status="$(curl -fsS "${CONNECT_URL}/connectors/${name}/status" 2>/dev/null || true)"
+    # NOTE: parses only the FIRST task's state — fine while both connectors run tasks.max=1
+    state="$(printf '%s' "$status" | sed -n 's/.*"tasks":\[{[^}]*"state":"\([A-Z]*\)".*/\1/p')"
+    [ "$state" = "RUNNING" ] && break
+    [ "$state" = "FAILED" ] && break
+    sleep 2
+  done
+  if [ "$state" != "RUNNING" ]; then
+    echo
+    echo "✗ ${name} task is ${state:-not up} — full status:" >&2
+    curl -fsS "${CONNECT_URL}/connectors/${name}/status" >&2 || true
+    echo >&2
+    exit 1
+  fi
+}
+
+# --- source: stopped-create + offset purge + resume ---
+echo "dropping any existing 'catalog-source-connector' …"
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/catalog-source-connector" >/dev/null 2>&1 || true
+
+echo "creating 'catalog-source-connector' (stopped) …"
+{ echo '{'; echo '  "initial_state": "STOPPED",'; tail -n +2 "$SOURCE_CONFIG"; } \
+  | curl -fsS -X POST "${CONNECT_URL}/connectors" \
+      -H 'Content-Type: application/json' --data-binary @- >/dev/null
+
+echo "purging stale source offsets …"
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/catalog-source-connector/offsets" >/dev/null
+
+echo "resuming 'catalog-source-connector' …"
+curl -fsS -X PUT "${CONNECT_URL}/connectors/catalog-source-connector/resume" >/dev/null
+wait_running catalog-source-connector
+
+# --- sink: plain recreate ---
+echo "dropping any existing 'catalog-sink-connector' …"
+curl -fsS -X DELETE "${CONNECT_URL}/connectors/catalog-sink-connector" >/dev/null 2>&1 || true
+
+echo "creating 'catalog-sink-connector' …"
+curl -fsS -X POST "${CONNECT_URL}/connectors" \
+  -H 'Content-Type: application/json' --data-binary "@${SINK_CONFIG}" >/dev/null
+wait_running catalog-sink-connector
+
+echo
+echo "✓ both connectors RUNNING. Simulate changes and watch the projection fill:"
+echo "  make catalog-simulate COUNT=5"
+echo "  make catalog-projection"

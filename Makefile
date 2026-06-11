@@ -21,9 +21,12 @@ setup: ## provision everything, idempotently: composer vendor, every workshop to
 	docker compose run --rm php php bin/console kafka:schema:register --all
 	docker compose run --rm php bin/console kafka:consume:setup
 	docker compose run --rm php bin/console outbox:setup
+	docker compose run --rm php bin/console catalog:setup
 
 teardown: ## delete every workshop topic created by setup (idempotent; removes the Debezium connector first)
 	-@bin/debezium-delete
+	-@bin/debezium-delete catalog-sink-connector
+	-@bin/debezium-delete catalog-source-connector
 	bin/kafka-teardown
 
 ##@ Consumer (orders projection)
@@ -56,6 +59,8 @@ integration-reset: ## wipe state: recreate every topic, drop + recreate the proj
 		exit 1; \
 	fi
 	-@bin/debezium-delete
+	-@bin/debezium-delete catalog-sink-connector
+	-@bin/debezium-delete catalog-source-connector
 	bin/kafka-teardown
 	bin/kafka-setup
 	docker compose run --rm php php bin/console kafka:consume:setup --fresh
@@ -132,3 +137,25 @@ debezium-status: ## show the connector + task state
 	bin/debezium-status
 debezium-delete: ## delete the connector
 	bin/debezium-delete
+
+##@ Catalog projection demo (Block 9 — Debezium source + JDBC sink, zero consumer code)
+catalog-setup: ## provision the demo tables: product_catalog_state_change + products_projection (FRESH=1 to drop + recreate)
+	docker compose run --rm php bin/console catalog:setup $(if $(FRESH),--fresh,)
+catalog-register: ## (re)build the connect image with the AVRO converter, then register the source + sink connector pair
+	docker compose up -d --build --wait connect
+	bin/catalog-register
+catalog-simulate: ## simulate product changes — full-state AVRO events through the state-change table (COUNT=5 NEW=0 INTERVAL=250)
+	docker compose run --rm php bin/console catalog:simulate $(if $(COUNT),--count $(COUNT),) $(if $(NEW),--new $(NEW),) $(if $(INTERVAL),--interval $(INTERVAL),)
+catalog-watch: ## tail the projection-change topic with keys + headers (raw AVRO bytes — the point: nobody decoded them yet)
+	docker compose exec kafka kafka-console-consumer --bootstrap-server kafka:29092 \
+		--topic enet.product-catalog.projection-change --from-beginning \
+		--property print.headers=true --property print.key=true
+catalog-projection: ## show the loyalty-side projection — filled by the JDBC sink, zero PHP
+	docker compose exec mysql mysql -uworkshop -pworkshop workshop \
+		-e 'SELECT sku, name, price, margin, created_at, updated_at FROM products_projection ORDER BY sku'
+catalog-status: ## connector + task state for both demo connectors
+	bin/debezium-status catalog-source-connector
+	bin/debezium-status catalog-sink-connector
+catalog-delete: ## delete both demo connectors (offsets purged; tables and topic stay)
+	-@bin/debezium-delete catalog-sink-connector
+	-@bin/debezium-delete catalog-source-connector
