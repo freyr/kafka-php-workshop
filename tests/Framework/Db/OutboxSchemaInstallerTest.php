@@ -6,36 +6,27 @@ namespace Workshop\Tests\Framework\Db;
 
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
-use Workshop\App\Outbox\PayloadFormat;
 use Workshop\Framework\Db\OutboxSchemaInstaller;
 
 final class OutboxSchemaInstallerTest extends TestCase
 {
-    public function testJsonFormatProvisionsAJsonPayloadColumn(): void
+    public function testInstallProvisionsABinaryPayloadColumn(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->expects(self::once())
             ->method('executeStatement')
             ->with(self::logicalAnd(
                 self::stringContains('CREATE TABLE IF NOT EXISTS outbox'),
-                self::stringContains('payload        JSON'),
+                self::stringContains('payload        MEDIUMBLOB'),
             ));
 
         new OutboxSchemaInstaller($connection)->install();
     }
 
-    public function testAvroFormatProvisionsABinaryPayloadColumn(): void
+    public function testPayloadColumnTypeNormalizesWhatMysqlReports(): void
     {
-        $connection = $this->createMock(Connection::class);
-        $connection->expects(self::once())
-            ->method('executeStatement')
-            ->with(self::stringContains('payload        MEDIUMBLOB'));
-
-        new OutboxSchemaInstaller($connection)->install(PayloadFormat::Avro);
-    }
-
-    public function testPayloadColumnTypeNarrowsTheLookup(): void
-    {
+        // A pre-AVRO provisioning left a JSON column behind — the fingerprint
+        // must surface it (lowercased) so setup can demand --fresh.
         $connection = self::createStub(Connection::class);
         $connection->method('fetchOne')->willReturn('JSON');
 

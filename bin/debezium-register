@@ -4,10 +4,9 @@ set -euo pipefail
 # Registers the Debezium MySQL outbox connector (Block 6 — CDC relay). Waits for
 # the Kafka Connect REST API, pre-creates the routed + schema-history topics
 # (broker auto-create is off), then (re)creates the connector from the given
-# config file (default: config/debezium-outbox-connector.json — the JSON-payload
-# flavor; pass config/debezium-outbox-connector-avro.json for the AVRO-payload
-# pass-through). Both configs share one connector name, so registering one
-# replaces the other — the two flavors can never run side by side.
+# config file (default: config/debezium-outbox-connector.json — ByteArrayConverter
+# pass-through: the outbox payload column already holds Confluent-framed AVRO
+# bytes, so the connector moves them untouched).
 #
 # Always a CLEAN start, so re-running converges no matter what happened before:
 #
@@ -81,7 +80,7 @@ fi
 
 echo
 echo "✓ registered, task RUNNING. Place an order and watch CDC route it"
-echo "(the topic carries JSON, not AVRO):"
+echo "(the topic carries Confluent-framed AVRO, decodable by kafka:consume):"
 echo "  docker compose run --rm php bin/console outbox:place"
 echo "  make outbox-watch"
 echo

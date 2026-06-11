@@ -63,20 +63,7 @@ final class OutboxPlaceCommandTest extends TestCase
         self::assertStringContainsString('--pool must be >= 1', $tester->getDisplay());
     }
 
-    public function testUnknownFormatIsRejected(): void
-    {
-        $tester = $this->tester(self::createStub(Connection::class));
-
-        $tester->execute([
-            '--format' => 'protobuf',
-        ]);
-
-        self::assertSame(Command::INVALID, $tester->getStatusCode());
-        self::assertStringContainsString('Unknown format: protobuf', $tester->getDisplay());
-        self::assertStringContainsString('json | avro', $tester->getDisplay());
-    }
-
-    public function testAvroFormatStoresTheFramedBytes(): void
+    public function testPlacementStoresTheFramedBytes(): void
     {
         $statements = [];
 
@@ -93,13 +80,13 @@ final class OutboxPlaceCommandTest extends TestCase
         $tester = $this->tester($connection);
 
         $tester->execute([
-            '--format' => 'avro',
             '--message-name' => 'order.created',
             '--interval' => '0',
         ]);
 
         self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
-        // The outbox INSERT carries the serializer's wire bytes, not JSON.
+        // The outbox INSERT carries the serializer's wire bytes — the same
+        // Confluent-framed AVRO a direct produce would put on the topic.
         self::assertSame("\x00FRAMED-AVRO", $statements[1][1]['payload']);
     }
 

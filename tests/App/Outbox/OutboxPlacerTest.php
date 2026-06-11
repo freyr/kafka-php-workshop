@@ -9,7 +9,6 @@ use PHPUnit\Framework\TestCase;
 use Workshop\App\Outbox\OrderStateWriter;
 use Workshop\App\Outbox\OutboxPlacer;
 use Workshop\App\Outbox\OutboxRepository;
-use Workshop\App\Outbox\PayloadFormat;
 use Workshop\App\Outbox\SimulatedCrash;
 use Workshop\App\Outbox\Tamper;
 use Workshop\App\Producer\ErrorDemo;
@@ -55,35 +54,8 @@ final class OutboxPlacerTest extends TestCase
         self::assertSame('ord-1', $outbox['aggregate_id']);
         self::assertSame('order.created', $outbox['event_type']);
 
-        // The stored payload is the wire envelope, JSON-encoded.
-        self::assertIsString($outbox['payload']);
-        $payload = json_decode($outbox['payload'], true);
-        self::assertIsArray($payload);
-        self::assertSame($message->envelope(), $payload);
-    }
-
-    public function testAvroFormatStoresTheSerializerBytes(): void
-    {
-        $statements = [];
-
-        $connection = $this->createMock(Connection::class);
-        $connection->expects(self::once())
-            ->method('transactional')
-            ->willReturnCallback(static fn (\Closure $func): mixed => $func());
-        $connection->method('executeStatement')
-            ->willReturnCallback(function (string $sql, array $params = []) use (&$statements): int {
-                $statements[] = [$sql, $params];
-
-                return 1;
-            });
-
-        $message = OrderCreated::create('ord-1');
-
-        $this->placer($connection)->place($message, false, PayloadFormat::Avro);
-
         // The stored payload is exactly what the MessageSerializer produced —
-        // Confluent-framed wire bytes, not a JSON re-encoding of the envelope.
-        $outbox = $statements[1][1];
+        // Confluent-framed wire bytes, ready for a relay to forward untouched.
         self::assertSame("\x00FRAMED-AVRO", $outbox['payload']);
     }
 
@@ -104,7 +76,7 @@ final class OutboxPlacerTest extends TestCase
 
         $message = ErrorDemo::create('err-1', 4);
 
-        $this->placer($connection)->place($message, false, PayloadFormat::Avro);
+        $this->placer($connection)->place($message);
 
         // No business state to change — the error demo borrows the outbox only
         // as its at-least-once producing vehicle.
@@ -129,7 +101,7 @@ final class OutboxPlacerTest extends TestCase
                 return 1;
             });
 
-        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, Tamper::Unframed);
+        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, Tamper::Unframed);
 
         $payload = $statements[0][1]['payload'];
         self::assertIsString($payload);
@@ -151,7 +123,7 @@ final class OutboxPlacerTest extends TestCase
                 return 1;
             });
 
-        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, PayloadFormat::Avro, Tamper::Headerless);
+        $this->placer($connection)->place(ErrorDemo::create('err-1', 1), false, Tamper::Headerless);
 
         self::assertSame("\x00FRAMED-AVRO", $statements[0][1]['payload'], 'the payload stays perfectly valid framed AVRO');
         self::assertSame('', $statements[0][1]['event_type'], 'no event type → the relay ships the record without the message-name header — the convention contract is broken');
