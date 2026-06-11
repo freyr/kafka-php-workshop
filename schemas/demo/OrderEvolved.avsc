@@ -2,7 +2,7 @@
   "type": "record",
   "name": "OrderEvolved",
   "namespace": "com.ecommerce.demo",
-  "doc": "Block 4 schema-evolution playground. A deliberately FLAT event — order_id, customer_name, amount_cents — so the consumer prints one field per line and any field you add stands out. You evolve THIS event in place (add a field with a default, register it, later drop the default) instead of the real OrderCreated, so the exercise stays isolated on its own topic (enet.demo.orders) and subject. Subject: com.ecommerce.demo.order_evolved (RecordNameStrategy).",
+  "doc": "Block 4 schema-evolution playground. A deliberately FLAT event — order_id, customer_name, amount_cents — so the consumer prints one field per line and any field you add stands out. You evolve THIS event in place (add a field with a default, register it, later drop the default) instead of the real OrderCreated, so the exercise stays isolated on its own topic (enet.demo.orders) and subject. Subject: com.ecommerce.demo.OrderEvolved (RecordNameStrategy).",
   "fields": [
     {
       "name": "metadata",
