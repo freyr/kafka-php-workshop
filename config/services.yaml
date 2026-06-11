@@ -156,3 +156,17 @@ services:
             $brokers: '%kafka.brokers%'
 
     Workshop\Kafka\Config\BrokerProbe: '@Workshop\Kafka\Config\TcpBrokerProbe'
+
+    # The enqueue (queue-interop) flavor of the same system — a cleanly separated
+    # layer showing how a typical production enqueue setup is built: an fpm-style
+    # producer, an outbox relay daemon, and a committing consumer, all reusing the
+    # message classes, AVRO serde, routing tables, bus and dedup middleware above.
+    # Only the commands and the context factory are services; RawBodySerializer is
+    # constructed by the factory and the enqueue contexts/producers/consumers are
+    # built at runtime per role.
+    Workshop\Enqueue\Console\:
+        resource: '../src/Enqueue/Console/'
+
+    Workshop\Enqueue\EnqueueContextFactory:
+        arguments:
+            $brokers: '%kafka.brokers%'

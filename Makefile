@@ -90,6 +90,14 @@ outbox-watch: ## tail the relayed topic with keys + headers (both relay flavors 
 		--topic enet.ecommerce.outbox.Order --from-beginning \
 		--property print.headers=true --property print.key=true
 
+##@ Enqueue (production-style clients over enqueue/rdkafka)
+enqueue-produce: ## simulate php-fpm requests, one broker-acked message each (COUNT=n NAME=order.created)
+	docker compose run --rm php bin/console enqueue:produce $(if $(COUNT),--count $(COUNT),) $(if $(NAME),--message-name $(NAME),)
+enqueue-relay: ## run the enqueue outbox relay until Ctrl+C (ONCE=1 to drain the backlog and exit)
+	docker compose run --rm php bin/console enqueue:outbox:relay $(if $(ONCE),--once,)
+enqueue-consume: ## consume through the message bus with dedup always on (TOPIC=... GROUP=... MAX=n)
+	docker compose run --rm php bin/console enqueue:consume $(if $(TOPIC),$(TOPIC),) $(if $(GROUP),--group $(GROUP),) $(if $(MAX),--max $(MAX),)
+
 ##@ Debezium (Block 6 CDC outbox)
 debezium-register: ## register the connector for the JSON-payload outbox (EventRouter expands the envelope)
 	bin/debezium-register
